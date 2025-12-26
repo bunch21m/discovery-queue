@@ -1,0 +1,55 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:146.0) Gecko/20100101 Firefox/146.0" version="29.2.9">
+  <diagram name="Page-1" id="pa5haxhcRqKN-S1BrGPr">
+    <mxGraphModel dx="1426" dy="827" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="mGDlnJXSNzXlfKlqY1Ct-1" parent="1" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" value="User" vertex="1">
+          <mxGeometry height="60" width="30" x="120" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="mGDlnJXSNzXlfKlqY1Ct-2" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="mGDlnJXSNzXlfKlqY1Ct-3" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="160" y="339.5" as="sourcePoint" />
+            <mxPoint x="270" y="339.5" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mGDlnJXSNzXlfKlqY1Ct-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="Game Wish list Prediction System" vertex="1">
+          <mxGeometry height="60" width="120" x="280" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="mGDlnJXSNzXlfKlqY1Ct-4" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="mGDlnJXSNzXlfKlqY1Ct-7" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="410" y="339.5" as="sourcePoint" />
+            <mxPoint x="480" y="340" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mGDlnJXSNzXlfKlqY1Ct-7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;" value="" vertex="1">
+          <mxGeometry height="200" width="120" x="500" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="mGDlnJXSNzXlfKlqY1Ct-8" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" value="Games" vertex="1">
+          <mxGeometry height="80" width="60" x="310" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="mGDlnJXSNzXlfKlqY1Ct-11" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="Game 1" vertex="1">
+          <mxGeometry height="40" width="90" x="515" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="mGDlnJXSNzXlfKlqY1Ct-13" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="Game 2" vertex="1">
+          <mxGeometry height="40" width="90" x="515" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="mGDlnJXSNzXlfKlqY1Ct-14" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="&lt;div&gt;Game k&lt;/div&gt;" vertex="1">
+          <mxGeometry height="40" width="90" x="515" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="mGDlnJXSNzXlfKlqY1Ct-18" edge="1" parent="1" style="endArrow=none;dashed=1;html=1;rounded=0;dashPattern=1 4;strokeWidth=3;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="560" y="380" as="sourcePoint" />
+            <mxPoint x="559.5" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mGDlnJXSNzXlfKlqY1Ct-19" edge="1" parent="1" style="endArrow=classic;startArrow=classic;html=1;rounded=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="339.5" y="310" as="sourcePoint" />
+            <mxPoint x="339.5" y="250" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
