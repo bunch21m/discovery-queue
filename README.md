@@ -1,2 +1,2 @@
-# paragraph-author-classifier
+# discovery-queue
 AI/ML Project.
