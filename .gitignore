@@ -4,3 +4,6 @@
 .env
 # Make sure the huge data files are ignored
 data/games.*
+
+# local docker secrets
+.secrets/

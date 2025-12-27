@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      # Use the *_FILE convention so the image reads credentials from files
+      POSTGRES_USER_FILE: /run/secrets/postgres_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB_FILE: /run/secrets/postgres_db
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    secrets:
+      - postgres_user
+      - postgres_password
+      - postgres_db
+
+  web:
+    build: .
+    depends_on:
+      - db
+    volumes:
+      - .:/app:cached
+    secrets:
+      - postgres_user
+      - postgres_password
+      - postgres_db
+    command: >
+      bash -c "python -m src.webapp.init_db && python -m src.webapp.App"
+
+volumes:
+  db_data:
+
+secrets:
+  postgres_user:
+    file: .secrets/postgres_user
+  postgres_password:
+    file: .secrets/postgres_password
+  postgres_db:
+    file: .secrets/postgres_db
