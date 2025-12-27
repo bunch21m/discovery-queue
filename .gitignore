@@ -1,0 +1,6 @@
+# Byte-compiled / optimized / DLL files
+# I do not care for these files...
+*__pycache__*
+.env
+# Make sure the huge data files are ignored
+data/games.*
