@@ -1,12 +1,12 @@
-from src.models.CommonModelUtils import loadAllGamesFromJSON
+from src.models.CommonModelUtils import loadAllGamesFromDatabase
 
 class SimpleTagVectorBasedRecommender:
     """
     A simple recommender that recommends games based on tag vectors.
-    It loads a dataset of games from a JSON file, computes similarity based on tags,
+    It loads a dataset of games from the database, computes similarity based on tags,
     and recommends the top numRecommendationsToMake similar games.
 
-    When initializing, it loads the dataset of games from the specified JSON file.
+    When initializing, it loads the dataset of games from the database.
     Every game in the dataset is expected to have a 'tags' field which is a list of tags.
     Otherwise it is discarded from the dataset.
 
@@ -32,16 +32,9 @@ class SimpleTagVectorBasedRecommender:
     def __init__(self, **kwargs) -> None:
         """
         Initializes a new SimpleTagVectorBasedRecommender.
-        Loads the dataset of games from a JSON file.
-
-        Args:
-            **kwargs: Has a key "pathToDataset" which is the path to the dataset file.
+        Loads the dataset of games from the database.
         """
-        for key, value in kwargs.items():
-            if key == "pathToDataset":
-                pathToDataset = value
-
-        self.dataset = loadAllGamesFromJSON(pathToDataset)
+        self.dataset = loadAllGamesFromDatabase()
         self.tagList = set()
 
         # First pass: build the master tag list

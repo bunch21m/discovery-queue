@@ -1,25 +1,18 @@
-from src.models.CommonModelUtils import loadAllGamesFromJSON
+from src.models.CommonModelUtils import loadAllGamesFromDatabase
 
 class SimplePositiveRatingBasedRecommender:
     """
     A simple recommender that recommends games based on their positive ratings.
-    It loads a dataset of games from a JSON file, sorts them by positive ratings,
+    It loads a dataset of games from the database, sorts them by positive ratings,
     and recommends the top numRecommendationsToMake games.
     """
 
     def __init__(self, **kwargs) -> None:
         """
         Initializes a new SimplePositiveRatingBasedRecommender.
-        Loads the dataset of games from a JSON file, then sorts them by positive ratings.
-
-        Args:
-            **kwargs: Has a key "pathToDataset" which is the path to the dataset file.
+        Loads the dataset of games from the database, then sorts them by positive ratings.
         """
-        for key, value in kwargs.items():
-            if key == "pathToDataset":
-                pathToDataset = value
-
-        self.dataset = loadAllGamesFromJSON(pathToDataset)
+        self.dataset = loadAllGamesFromDatabase()
         self.dataset = sorted(self.dataset.values(), key=lambda x: x['positive'], reverse=True)
 
     def getRecommendations(self, **kwargs):
@@ -34,6 +27,7 @@ class SimplePositiveRatingBasedRecommender:
             list: A list of recommended game names.
             list: A list of recommended game App IDs.
         """
+        numRecommendationsToMake = 10 # Default
         for key, value in kwargs.items():
             if key == "numRecommendationsToMake":
                 numRecommendationsToMake = value
@@ -43,4 +37,3 @@ class SimplePositiveRatingBasedRecommender:
         recommendations = [game['name'] for game in bestGames]
 
         return recommendations, appIDs
-        
