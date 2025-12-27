@@ -1,7 +1,11 @@
-import os
-import json
+from src.models.CommonModelUtils import loadAllGamesFromJSON
 
 class SimplePositiveRatingBasedRecommender:
+    """
+    A simple recommender that recommends games based on their positive ratings.
+    It loads a dataset of games from a JSON file, sorts them by positive ratings,
+    and recommends the top numRecommendationsToMake games.
+    """
 
     def __init__(self, **kwargs) -> None:
         """
@@ -15,32 +19,28 @@ class SimplePositiveRatingBasedRecommender:
             if key == "pathToDataset":
                 pathToDataset = value
 
-        self.dataset = {}
-        if os.path.exists(pathToDataset):
-            with open(pathToDataset, 'r', encoding='utf-8') as fin:
-                text = fin.read()
-                if len(text) > 0:
-                    self.dataset = json.loads(text)
-
-        for app in self.dataset:
-            game = self.dataset[app]
-
-            name = game['name']         # Game name (string).
-            positive = game['positive'] # Positive votes (int).
-
+        self.dataset = loadAllGamesFromJSON(pathToDataset)
         self.dataset = sorted(self.dataset.values(), key=lambda x: x['positive'], reverse=True)
 
     def getRecommendations(self, **kwargs):
         """
         Recommends a game simply by returning the top 
         numRecommendationsToMake highest rated games.
+
+        Args:
+            **kwargs: Has a key "numRecommendationsToMake" which is the number of recommendations to make.
+
+        Returns:
+            list: A list of recommended game names.
+            list: A list of recommended game App IDs.
         """
         for key, value in kwargs.items():
             if key == "numRecommendationsToMake":
                 numRecommendationsToMake = value
 
-        recommendations = self.dataset[:numRecommendationsToMake]
-        recommendations = [game['name'] for game in recommendations]
+        bestGames = self.dataset[:numRecommendationsToMake]
+        appIDs = [game['appID'] for game in bestGames]
+        recommendations = [game['name'] for game in bestGames]
 
-        return recommendations
+        return recommendations, appIDs
         

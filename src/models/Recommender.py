@@ -1,4 +1,5 @@
 from src.models.SimplePositiveRatingBasedRecommender import SimplePositiveRatingBasedRecommender
+from src.models.SimpleTagVectorBasedRecommender import SimpleTagVectorBasedRecommender
 
 class Recommender:
     """
@@ -12,7 +13,8 @@ class Recommender:
     # Mapping from recommender name to the class that provides recommendations
     # The class must implement a getRecommendations method
     implementedRecommenders = {
-        "simplePositiveRatingBased": SimplePositiveRatingBasedRecommender
+        "simplePositiveRatingBased": SimplePositiveRatingBasedRecommender,
+        "simpleTagVectorBased": SimpleTagVectorBasedRecommender
     }
 
     def __init__(self, recommenderType: str, *args, **kwargs) -> None:
@@ -39,6 +41,6 @@ class Recommender:
             **kwargs: Arguments to pass to the recommender's getRecommendations method.
 
         Returns:
-            list: A list of recommended games.
+            list: A list of recommended games, and their appIDs.
         """
         return self.recommenderObject.getRecommendations(*args, **kwargs)

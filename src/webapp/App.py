@@ -3,18 +3,26 @@ from src.models.Recommender import Recommender
 NUM_RECOMMENDATIONS = 10
 
 def main():
-    # Set up the five different interest levels for a user's interest in a game
-    gameMap = {}
-    gameMap[0] = [] # Strong dislike
-    gameMap[1] = [] # Slight dislike
-    gameMap[2] = [] # Indifferent
-    gameMap[3] = [] # Slight like
-    gameMap[4] = [] # Strong like
+    recommenderObject = Recommender("simpleTagVectorBased", pathToDataset='data/games.json')
+    recommendedGames, recommendedAppIDs = recommenderObject.getRecommendations(numRecommendationsToMake=NUM_RECOMMENDATIONS)
+    
+    while True:
+        for i in range(len(recommendedGames)):
+            print(f"{i + 1}. {recommendedGames[i]} (App ID: {recommendedAppIDs[i]})")
+            userInput = input("Enter your interest level in this game (0-1), or 'q' to quit: ")
+            if userInput.lower() == 'q':
+                return
+            try:
+                interestLevel = float(userInput)
+                if interestLevel < 0 or interestLevel > 1:
+                    print("Interest level must be between 0 and 1.")
+                    continue
+                recommenderObject.recommenderObject.updateUserInterestVector(recommendedAppIDs[i], interestLevel)
+            except ValueError:
+                print("Invalid input. Please enter a number between 0 and 1, or 'q' to quit.")
+                continue
 
-    recommenderObject = Recommender("simplePositiveRatingBased", pathToDataset='data/games.json')
-    recommendedGames = recommenderObject.getRecommendations(numRecommendationsToMake=NUM_RECOMMENDATIONS)
-    for game in recommendedGames:
-        print(game)
+        recommendedGames, recommendedAppIDs = recommenderObject.getRecommendations(numRecommendationsToMake=NUM_RECOMMENDATIONS)
 
 if __name__ == "__main__":
     main()
