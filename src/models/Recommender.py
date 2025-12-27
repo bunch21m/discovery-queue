@@ -1,20 +1,21 @@
-from src.models.SimplePositiveRatingBasedRecommender import getRecommendations as getPositiveRecommendations
+from src.models.SimplePositiveRatingBasedRecommender import SimplePositiveRatingBasedRecommender
 
 class Recommender:
     """
     Represents a recommendation system that
     recommends steam games. Has the centralized list of all implemented recommenders.
 
-    All recommenders must implement a function which takes in some various arguments
-    and returns a list of exactly NUM_RECOMMENDATIONS recommended games.
+    All recommenders must implement a function getRecommendations which takes in 
+    some various arguments and returns a list of recommended games.
     """
 
-    # Mapping from recommender name to the function that provides recommendations
+    # Mapping from recommender name to the class that provides recommendations
+    # The class must implement a getRecommendations method
     implementedRecommenders = {
-        "simplePositiveRatingBased": getPositiveRecommendations
+        "simplePositiveRatingBased": SimplePositiveRatingBasedRecommender
     }
 
-    def __init__(self, recommenderType: str) -> None:
+    def __init__(self, recommenderType: str, *args, **kwargs) -> None:
         """
         Initializes a new recommender with the given recommender type.
 
@@ -26,4 +27,18 @@ class Recommender:
         """
         if recommenderType not in Recommender.implementedRecommenders:
             raise ValueError(f"Unknown recommender type '{recommenderType}'.")
+        
         self.recommenderType = recommenderType
+        self.recommenderObject = Recommender.implementedRecommenders[recommenderType](*args, **kwargs)
+
+    def getRecommendations(self, *args, **kwargs):
+        """
+        Gets recommendations from the underlying recommender object.
+
+        Args:
+            **kwargs: Arguments to pass to the recommender's getRecommendations method.
+
+        Returns:
+            list: A list of recommended games.
+        """
+        return self.recommenderObject.getRecommendations(*args, **kwargs)
