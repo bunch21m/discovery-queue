@@ -5,7 +5,7 @@ import psycopg2
 from psycopg2.extras import Json
 
 
-def readSecret(path):
+def _readSecret(path):
     try:
         with open(path, 'r', encoding='utf-8') as f:
             return f.read().strip()
@@ -13,9 +13,9 @@ def readSecret(path):
         return None
 
 
-user = readSecret('/run/secrets/postgres_user')
-password = readSecret('/run/secrets/postgres_password')
-dbName = readSecret('/run/secrets/postgres_db')
+user = _readSecret('/run/secrets/postgres_user')
+password = _readSecret('/run/secrets/postgres_password')
+dbName = _readSecret('/run/secrets/postgres_db')
 dbUrl = None
 if user and password and dbName:
     dbUrl = f"postgresql://{user}:{password}@db:5432/{dbName}"
