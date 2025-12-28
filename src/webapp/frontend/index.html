@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Game recommender</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #recommendations {
+            margin-top: 20px;
+            text-align: left;
+        }
+        #recommendations p {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Discovery Queue Recommender</h1>
+    <p>Click the button below to get game recommendations based on positive ratings.
+        
+    </p><button id="recommendButton">Get Recommendations</button>
+    <div id="recommendations"></div>
+    
+
+    <!-- This script handles fetching and displaying game recommendations -->
+    <script>
+        document.getElementById('recommendButton').addEventListener('click', async () => {
+
+            // Fetch recommendations from the backend
+            const response = await fetch('/recommend');
+
+            // The data must be parsed from JSON, no other part of the response is needed
+            const data = await response.json();
+
+            if (!response.ok) {
+                console.error('Error fetching recommendations:', data.error);
+                return;
+            }
+
+            if (data.recommendations.length === 0) {
+                recommendationsDiv.innerHTML = '<p>Error, no recommendations.</p>';
+                return;
+            }
+            
+            // For each recommendation, create a new paragraph element and add it to the recommendations div
+            const recommendationsDiv = document.getElementById('recommendations');
+            recommendationsDiv.innerHTML = '<h2>Recommended Games:</h2>';
+
+            for (let i = 0; i < data.recommendations.length; i++) {
+                const gameAndAppId = data.recommendations[i];
+                const newElementForGameAndAppId = document.createElement('p');
+                newElementForGameAndAppId.textContent = `Game: ${gameAndAppId.name}, App ID: ${gameAndAppId.appID}`;
+                recommendationsDiv.appendChild(newElementForGameAndAppId);
+            }
+        }); 
+    </script>
+</body>
+</html>

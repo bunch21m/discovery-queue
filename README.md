@@ -7,12 +7,10 @@ For first time startup, run
 ```powershell
 docker compose up --build
 ```
+in the `discovery-queue` folder.
+
 Note that a `.secrets` folder must be present alongside the `data` and `src`
 folders with a `postgres_db`, `postgres_password`, and `postgres_user` file present
 within it for proper functionality.
 
-To run the application interactively (required for user input), run:
-
-```powershell
-docker-compose run --rm --service-ports web
-```
+Once the application is running, navigate to `http://127.0.0.1:5000/` to see the webpage.
