@@ -44,6 +44,8 @@ def initSchema(conn):
                 name TEXT,
                 positive INTEGER,
                 tags TEXT[],
+                genres TEXT[],
+                price FLOAT,
                 data JSONB
             );
             """
@@ -69,18 +71,24 @@ def loadData(conn, jsonPath='data/games.json'):
             tags = game.get('tags') or []
             if isinstance(tags, dict):
                 tags = list(tags.keys())
-                
+            genres = game.get('genres') or []
+            if isinstance(genres, dict):
+                genres = list(genres.keys())
+            price = float(game.get('price') or 0)
+
             cur.execute(
                 """
-                INSERT INTO games (appid, name, positive, tags, data)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO games (appid, name, positive, tags, genres, price, data)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (appid) DO UPDATE SET
                     name = EXCLUDED.name,
                     positive = EXCLUDED.positive,
                     tags = EXCLUDED.tags,
+                    genres = EXCLUDED.genres,
+                    price = EXCLUDED.price,
                     data = EXCLUDED.data;
                 """,
-                (str(appid), name, positive, tags, Json(game))
+                (str(appid), name, positive, tags, genres, price, Json(game))
             )
     conn.commit()
 

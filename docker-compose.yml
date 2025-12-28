@@ -42,7 +42,7 @@ services:
       - postgres_password
       - postgres_db
     command: >
-      bash -c "python -m src.webapp.initializeDatabase && python -m src.webapp.initializeGameEmbeddings && python -m src.webapp.App"
+      bash -c "python -m src.ingest.initializeDatabase && python -m src.ingest.createGameEmbeddings && python -m src.webapp.App"
 
 volumes:
   db_data:

@@ -64,6 +64,19 @@ def initializeGameEmbeddings(dbUrl, dim=30):
     finally:
         conn.close()
 
+def initializeGameEmbeddingsDatabase():
+    dimEnv = os.environ.get('EMBEDDING_DIM')
+    try:
+        dim = int(dimEnv) if dimEnv else 30
+    except Exception:
+        dim = 30
+
+    dbUrl = buildDatabaseUrl()
+    if not waitForDb(dbUrl):
+        raise RuntimeError("Database did not become available")
+
+    initializeGameEmbeddings(dbUrl, dim=dim)
+    
 
 def main():
     dimEnv = os.environ.get('EMBEDDING_DIM')

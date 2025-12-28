@@ -72,7 +72,9 @@ def loadAllGamesFromDatabase():
                 game = {
                     'name': row.get('name'),
                     'positive': int(row.get('positive') or 0),
-                    'tags': row.get('tags') or []
+                    'tags': row.get('tags') or [],
+                    'genres': row.get('genres') or [],
+                    'price': float(row.get('price') or 0)
                 }
                 if row.get('data'):
                     game.update(row.get('data'))
