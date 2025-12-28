@@ -50,6 +50,43 @@ def initSchema(conn):
             );
             """
         )
+        
+        
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                userid INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                username TEXT UNIQUE,
+                data JSONB
+            );
+            """
+        )
+        
+        
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS interactions (
+                interactionid INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                appid TEXT REFERENCES games(appid),
+                userid INT REFERENCES users(userid),
+                interaction_type TEXT,
+                timestamp TIMESTAMP,
+                data JSONB
+            );
+            """
+        )
+        
+        cur.execute(
+            """
+            INSERT INTO users (username, data) VALUES ('test', '{}')
+            ON CONFLICT (username) DO NOTHING;
+            """
+        )
+                     
+        
+        
+        
+        
     conn.commit()
 
 def loadData(conn, jsonPath='data/games.json'):
