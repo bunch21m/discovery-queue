@@ -1,6 +1,6 @@
-from src.models.CommonModelUtils import readSecret
+from src.models.common_model_utils import read_secret
 
-def getUsersInteractionsFromDatabase(userid):
+def get_users_interactions_from_database(user_id):
     """
     Loads all interactions for a specific user from the PostgreSQL database.
 
@@ -9,26 +9,26 @@ def getUsersInteractionsFromDatabase(userid):
     """
     dataset = {}
     
-    user = readSecret('/run/secrets/postgres_user')
-    password = readSecret('/run/secrets/postgres_password')
-    dbName = readSecret('/run/secrets/postgres_db')
+    user = read_secret('/run/secrets/postgres_user')
+    password = read_secret('/run/secrets/postgres_password')
+    db_name = read_secret('/run/secrets/postgres_db')
     
-    if not (user and password and dbName):
+    if not (user and password and db_name):
         raise RuntimeError("Database credentials not found")
 
-    dbUrl = f"postgresql://{user}:{password}@db:5432/{dbName}"
+    db_url = f"postgresql://{user}:{password}@db:5432/{db_name}"
 
     try:
         import psycopg2
         from psycopg2.extras import RealDictCursor
 
-        conn = psycopg2.connect(dbUrl)
+        conn = psycopg2.connect(db_url)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(f"SELECT * FROM interactions WHERE userid = {userid};")
+            cur.execute(f"SELECT * FROM interactions WHERE userid = {user_id};")
             rows = cur.fetchall()
             for row in rows:
-                interactionid = row['interactionid']
-                dataset[interactionid] = row
+                interaction_id = row['interactionid']
+                dataset[interaction_id] = row
             
         conn.close()
     except Exception as e:
@@ -36,7 +36,7 @@ def getUsersInteractionsFromDatabase(userid):
 
     return dataset
 
-def addUserInteractionToDatabase(appid, userid, interactionType):
+def add_user_interaction_to_database(app_id, user_id, interaction_type):
     """
     Adds a user interaction to the PostgreSQL database.
 
@@ -44,26 +44,26 @@ def addUserInteractionToDatabase(appid, userid, interactionType):
             bool: True if the interaction was added successfully, False otherwise.
     """
     
-    user = readSecret('/run/secrets/postgres_user')
-    password = readSecret('/run/secrets/postgres_password')
-    dbName = readSecret('/run/secrets/postgres_db')
+    user = read_secret('/run/secrets/postgres_user')
+    password = read_secret('/run/secrets/postgres_password')
+    db_name = read_secret('/run/secrets/postgres_db')
     
-    if not (user and password and dbName):
+    if not (user and password and db_name):
         raise RuntimeError("Database credentials not found")
 
-    dbUrl = f"postgresql://{user}:{password}@db:5432/{dbName}"
+    db_url = f"postgresql://{user}:{password}@db:5432/{db_name}"
 
     try:
         import psycopg2
 
-        conn = psycopg2.connect(dbUrl)
+        conn = psycopg2.connect(db_url)
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO interactions (appid, userid, interactiontype, timestamp)
                 VALUES (%s, %s, %s, now());
                 """,
-                (appid, userid, interactionType)
+                (app_id, user_id, interaction_type)
             )
             conn.commit()
         conn.close()

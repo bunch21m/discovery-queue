@@ -4,7 +4,7 @@ import os
 import json
 
 
-def readSecret(path):
+def read_secret(path):
     """
     Reads a secret from a file.
 
@@ -19,7 +19,7 @@ def readSecret(path):
     except Exception:
         return None
 
-def loadAllGamesFromDatabase():
+def load_all_games_from_database():
     """
     Loads all games from the PostgreSQL database.
 
@@ -28,25 +28,25 @@ def loadAllGamesFromDatabase():
     """
     dataset = {}
     
-    user = readSecret('/run/secrets/postgres_user')
-    password = readSecret('/run/secrets/postgres_password')
-    dbName = readSecret('/run/secrets/postgres_db')
+    user = read_secret('/run/secrets/postgres_user')
+    password = read_secret('/run/secrets/postgres_password')
+    db_name = read_secret('/run/secrets/postgres_db')
     
-    if not (user and password and dbName):
+    if not (user and password and db_name):
         raise RuntimeError("Database credentials not found")
 
-    dbUrl = f"postgresql://{user}:{password}@db:5432/{dbName}"
+    db_url = f"postgresql://{user}:{password}@db:5432/{db_name}"
 
     try:
         import psycopg2
         from psycopg2.extras import RealDictCursor
 
-        conn = psycopg2.connect(dbUrl)
+        conn = psycopg2.connect(db_url)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT appid, name, positive, tags, data FROM games")
             rows = cur.fetchall()
             for row in rows:
-                appid = row.get('appid')
+                app_id = row.get('appid')
                 game = {
                     'name': row.get('name'),
                     'positive': int(row.get('positive') or 0),
@@ -57,8 +57,8 @@ def loadAllGamesFromDatabase():
                 if row.get('data'):
                     game.update(row.get('data'))
                 
-                game['appID'] = str(appid)
-                dataset[str(appid)] = game
+                game['app_id'] = str(app_id)
+                dataset[str(app_id)] = game
         conn.close()
     except Exception as e:
         raise RuntimeError(f"Database error: {e}")

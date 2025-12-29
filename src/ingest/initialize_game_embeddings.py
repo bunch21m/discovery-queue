@@ -3,7 +3,7 @@ import time
 import psycopg2
 
 
-def _readSecret(path):
+def _read_secret(path):
     try:
         with open(path, 'r', encoding='utf-8') as f:
             return f.read().strip()
@@ -11,24 +11,24 @@ def _readSecret(path):
         return None
 
 
-def buildDatabaseUrl():
+def build_database_url():
 
-    user = _readSecret('/run/secrets/postgres_user') 
-    password = _readSecret('/run/secrets/postgres_password') 
-    dbName = _readSecret('/run/secrets/postgres_db') 
+    user = _read_secret('/run/secrets/postgres_user') 
+    password = _read_secret('/run/secrets/postgres_password') 
+    db_name = _read_secret('/run/secrets/postgres_db') 
 
-    if user and password and dbName:
-        return f"postgresql://{user}:{password}@gameEmbeddings:5432/{dbName}"
+    if user and password and db_name:
+        return f"postgresql://{user}:{password}@gameEmbeddings:5432/{db_name}"
     return None
 
 
-def waitForDb(dbUrl, retries=20, delay=1.0):
-    if not dbUrl:
+def wait_for_db(db_url, retries=20, delay=1.0):
+    if not db_url:
         print("No DATABASE_URL available to wait on")
         return False
     for i in range(retries):
         try:
-            conn = psycopg2.connect(dbUrl)
+            conn = psycopg2.connect(db_url)
             conn.close()
             print("Database is available")
             return True
@@ -38,12 +38,12 @@ def waitForDb(dbUrl, retries=20, delay=1.0):
     return False
 
 
-def initializeGameEmbeddings(dbUrl, dim=30):
+def initialize_game_embeddings(db_url, dim=30):
     """Create the pgvector extension and gameEmbeddings table if they do not exist."""
-    if not dbUrl:
+    if not db_url:
         raise RuntimeError("DATABASE_URL not provided")
 
-    conn = psycopg2.connect(dbUrl)
+    conn = psycopg2.connect(db_url)
     try:
         with conn.cursor() as cur:
             # Ensure pgvector extension exists
@@ -64,32 +64,32 @@ def initializeGameEmbeddings(dbUrl, dim=30):
     finally:
         conn.close()
 
-def initializeGameEmbeddingsDatabase():
-    dimEnv = os.environ.get('EMBEDDING_DIM')
+def initialize_game_embeddings_database():
+    dim_env = os.environ.get('EMBEDDING_DIM')
     try:
-        dim = int(dimEnv) if dimEnv else 30
+        dim = int(dim_env) if dim_env else 30
     except Exception:
         dim = 30
 
-    dbUrl = buildDatabaseUrl()
-    if not waitForDb(dbUrl):
+    db_url = build_database_url()
+    if not wait_for_db(db_url):
         raise RuntimeError("Database did not become available")
 
-    initializeGameEmbeddings(dbUrl, dim=dim)
+    initialize_game_embeddings(db_url, dim=dim)
     
 
 def main():
-    dimEnv = os.environ.get('EMBEDDING_DIM')
+    dim_env = os.environ.get('EMBEDDING_DIM')
     try:
-        dim = int(dimEnv) if dimEnv else 30
+        dim = int(dim_env) if dim_env else 30
     except Exception:
         dim = 30
 
-    dbUrl = buildDatabaseUrl()
-    if not waitForDb(dbUrl):
+    db_url = build_database_url()
+    if not wait_for_db(db_url):
         raise RuntimeError("Database did not become available")
 
-    initializeGameEmbeddings(dbUrl, dim=dim)
+    initialize_game_embeddings(db_url, dim=dim)
 
 
 if __name__ == '__main__':

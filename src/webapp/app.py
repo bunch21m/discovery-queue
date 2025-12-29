@@ -1,5 +1,5 @@
 from flask import Flask, render_template, jsonify
-from src.models.Recommender import Recommender
+from src.models.recommender import Recommender
 
 NUM_RECOMMENDATIONS = 10
 
@@ -24,17 +24,17 @@ def recommend():
     Returns:
             JSON: A JSON object containing recommended games and their appIDs.
     """
-    recommenderObject = Recommender("simplePositiveRatingBased")
-    recommendedGames, recommendedAppIDs, recommendedMovieUrls = recommenderObject.getRecommendations(numRecommendationsToMake=NUM_RECOMMENDATIONS)
+    recommender_object = Recommender("simplePositiveRatingBased")
+    recommended_games, recommended_app_ids, recommended_movie_urls = recommender_object.get_recommendations(num_recommendations_to_make=NUM_RECOMMENDATIONS)
     try:
         recommendations = []
         # We iterate through a combined list of games, appIDs, and movie URLs,
         # adding it all to a list of dictionaries for easy consumption on the frontend.
-        for game, appID, movieURL in zip(recommendedGames, recommendedAppIDs, recommendedMovieUrls):
+        for game, app_id, movie_url in zip(recommended_games, recommended_app_ids, recommended_movie_urls):
             recommendations.append({
                 "name": game,
-                "appID": appID,
-                "movieURL": movieURL
+                "appID": app_id,
+                "movieURL": movie_url
             })
         
         return jsonify({"recommendations": recommendations})

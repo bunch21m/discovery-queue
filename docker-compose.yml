@@ -44,7 +44,7 @@ services:
     ports:
       - "5000:5000"
     command: >
-      bash -c "python -m src.ingest.initializeDatabase && python -m src.ingest.createGameEmbeddings && python -m src.webapp.App"
+      bash -c "python -m src.ingest.initialize_database && python -m src.ingest.create_game_embeddings && python -m src.webapp.experiment"
 
 volumes:
   db_data:

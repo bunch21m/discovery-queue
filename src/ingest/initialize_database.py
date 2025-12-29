@@ -5,7 +5,7 @@ import psycopg2
 from psycopg2.extras import Json
 
 
-def _readSecret(path):
+def _read_secret(path):
     try:
         with open(path, 'r', encoding='utf-8') as f:
             return f.read().strip()
@@ -13,20 +13,20 @@ def _readSecret(path):
         return None
 
 
-user = _readSecret('/run/secrets/postgres_user')
-password = _readSecret('/run/secrets/postgres_password')
-dbName = _readSecret('/run/secrets/postgres_db')
-dbUrl = None
-if user and password and dbName:
-    dbUrl = f"postgresql://{user}:{password}@db:5432/{dbName}"
+user = _read_secret('/run/secrets/postgres_user')
+password = _read_secret('/run/secrets/postgres_password')
+db_name = _read_secret('/run/secrets/postgres_db')
+db_url = None
+if user and password and db_name:
+    db_url = f"postgresql://{user}:{password}@db:5432/{db_name}"
 
-def waitForDb(retries=20, delay=1.0):
-    if not dbUrl:
+def wait_for_db(retries=20, delay=1.0):
+    if not db_url:
         print("DATABASE_URL not set, skipping DB init.")
         return False
     for i in range(retries):
         try:
-            conn = psycopg2.connect(dbUrl)
+            conn = psycopg2.connect(db_url)
             conn.close()
             print("Database is available")
             return True
@@ -35,7 +35,7 @@ def waitForDb(retries=20, delay=1.0):
             time.sleep(delay)
     raise RuntimeError("Database not available")
 
-def initSchema(conn):
+def init_schema(conn):
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -89,12 +89,12 @@ def initSchema(conn):
         
     conn.commit()
 
-def loadData(conn, jsonPath='data/games.json'):
-    if not os.path.exists(jsonPath):
-        print(f"Data file {jsonPath} not found, skipping seed.")
+def load_data(conn, json_path='data/games.json'):
+    if not os.path.exists(json_path):
+        print(f"Data file {json_path} not found, skipping seed.")
         return
 
-    with open(jsonPath, 'r', encoding='utf-8') as fin:
+    with open(json_path, 'r', encoding='utf-8') as fin:
         text = fin.read()
         if not text:
             print("Data file empty, skipping seed.")
@@ -102,7 +102,7 @@ def loadData(conn, jsonPath='data/games.json'):
         dataset = json.loads(text)
 
     with conn.cursor() as cur:
-        for appid, game in dataset.items():
+        for app_id, game in dataset.items():
             name = game.get('name')
             positive = int(game.get('positive') or 0)
             tags = game.get('tags') or []
@@ -125,21 +125,21 @@ def loadData(conn, jsonPath='data/games.json'):
                     price = EXCLUDED.price,
                     data = EXCLUDED.data;
                 """,
-                (str(appid), name, positive, tags, genres, price, Json(game))
+                (str(app_id), name, positive, tags, genres, price, Json(game))
             )
     conn.commit()
 
 def main():
-    if not dbUrl:
+    if not db_url:
         print("DATABASE_URL not set, skipping DB init.")
         return
 
-    waitForDb()
+    wait_for_db()
 
-    conn = psycopg2.connect(dbUrl)
+    conn = psycopg2.connect(db_url)
     try:
-        initSchema(conn)
-        loadData(conn)
+        init_schema(conn)
+        load_data(conn)
         print("DB init/seed complete")
     finally:
         conn.close()
