@@ -69,7 +69,7 @@ def initSchema(conn):
                 interactionid INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 appid TEXT REFERENCES games(appid),
                 userid INT REFERENCES users(userid),
-                interaction_type TEXT,
+                interactiontype TEXT,
                 timestamp TIMESTAMP,
                 data JSONB
             );

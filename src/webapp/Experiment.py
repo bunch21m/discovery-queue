@@ -1,5 +1,6 @@
 from src.db.interactionFunctions import addUserInteractionToDatabase, getUsersInteractionsFromDatabase
 from src.db.userFunctions import addUserToDatabase, getUserByUsername, getAllUsersFromDatabase
+from src.models.UserTwoTowerEmbedding import concatUserFeatures
 
 def main():
     print(getAllUsersFromDatabase())
@@ -11,11 +12,13 @@ def main():
     print(user)
     
     print("Adding interaction...")
-    addUserInteractionToDatabase("578080", user['userid'], "skip")
+    addUserInteractionToDatabase("578080", user['userid'], "wishlist")
     
     print("Getting user interactions...")
     interactions = getUsersInteractionsFromDatabase(user['userid'])
     print(interactions)
+    
+    print(concatUserFeatures("user2"))
     
     print("Done.")
 

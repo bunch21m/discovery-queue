@@ -2,9 +2,6 @@ from src.ingest.initializeGameEmbeddings import initializeGameEmbeddingsDatabase
 from src.models.CommonModelUtils import loadAllGamesFromDatabase
 
 import numpy as np
-from sklearn.decomposition import TruncatedSVD
-
-import numpy as np
 import pandas as pd
 from sklearn.decomposition import TruncatedSVD
 from sklearn.preprocessing import MultiLabelBinarizer
@@ -48,6 +45,7 @@ def main():
     mlb = MultiLabelBinarizer(sparse_output=False)
     # Handle missing genres
     genres = df['genres'].apply(lambda x: x if isinstance(x, list) else [])
+    
     genreMatrixMultiHot = mlb.fit_transform(genres)
 
     # Apply dimensionality reduction globally
@@ -67,7 +65,7 @@ def main():
 
     # 5. Combine All Features
     # Shape: (N_Games, ID_DIM + GENRE_DIM + PRICE_DIM)
-    finalItemVectors = np.hstack([idFeatures, genreFeatures, priceFeatures])
+    finalItemVectors = np.concatenate([idFeatures, genreFeatures, priceFeatures], axis=1).astype(np.float32)
 
     print(f"Processed {len(df)} games. Feature Vector Shape: {finalItemVectors.shape}")
     print(f"Sample Feature Vector for AppID {df['appID'].iloc[0]}: {finalItemVectors[0]}")

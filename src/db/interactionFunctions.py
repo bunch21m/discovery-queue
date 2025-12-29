@@ -60,7 +60,7 @@ def addUserInteractionToDatabase(appid, userid, interactionType):
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO interactions (appid, userid, interaction_type, timestamp)
+                INSERT INTO interactions (appid, userid, interactiontype, timestamp)
                 VALUES (%s, %s, %s, now());
                 """,
                 (appid, userid, interactionType)
