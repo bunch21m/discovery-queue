@@ -1,3 +1,4 @@
+import json
 from src.models.CommonModelUtils import loadAllGamesFromDatabase
 
 class SimplePositiveRatingBasedRecommender:
@@ -34,6 +35,16 @@ class SimplePositiveRatingBasedRecommender:
 
         bestGames = self.dataset[:numRecommendationsToMake]
         appIDs = [game['appID'] for game in bestGames]
+        # We either return no movie if the game has no associated movie URLs,
+        # or the first in its list of movie URLs for simplicity.
+        movieURLs = []
+        for game in bestGames:
+            movies = game.get('movies', [])
+            if movies and isinstance(movies, list):
+                firstMovie = movies[0]
+                movieURLs.append(firstMovie)
+            else:
+                movieURLs.append(None)
         recommendations = [game['name'] for game in bestGames]
 
-        return recommendations, appIDs
+        return recommendations, appIDs, movieURLs

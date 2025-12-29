@@ -32,12 +32,26 @@
             margin-top: 20px;
             text-align: left;
         }
-        #recommendations p {
+        .recommendation-card {
             background: white;
-            padding: 10px;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+        .recommendation-card h3 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+        }
+        .recommendation-card p {
+            margin: 0 0 15px 0;
+            color: #666;
+        }
+        video {
+            width: 100%;
             border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin: 5px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            background-color: #000;
         }
     </style>
 </head>
@@ -75,9 +89,24 @@
 
             for (let i = 0; i < data.recommendations.length; i++) {
                 const gameAndAppId = data.recommendations[i];
-                const newElementForGameAndAppId = document.createElement('p');
-                newElementForGameAndAppId.textContent = `Game: ${gameAndAppId.name}, App ID: ${gameAndAppId.appID}`;
-                recommendationsDiv.appendChild(newElementForGameAndAppId);
+                
+                const card = document.createElement('div');
+                card.className = 'recommendation-card';
+
+                const title = document.createElement('h3');
+                title.textContent = gameAndAppId.name;
+
+                const details = document.createElement('p');
+                details.textContent = `App ID: ${gameAndAppId.appID}`;
+
+                const video = document.createElement('video');
+                video.src = gameAndAppId.movieURL;
+                video.controls = true;
+                
+                card.appendChild(title);
+                card.appendChild(details);
+                card.appendChild(video);
+                recommendationsDiv.appendChild(card);
             }
         }); 
     </script>

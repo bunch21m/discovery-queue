@@ -25,16 +25,16 @@ def recommend():
             JSON: A JSON object containing recommended games and their appIDs.
     """
     recommenderObject = Recommender("simplePositiveRatingBased")
-    recommendedGames, recommendedAppIDs = recommenderObject.getRecommendations(numRecommendationsToMake=NUM_RECOMMENDATIONS)
+    recommendedGames, recommendedAppIDs, recommendedMovieUrls = recommenderObject.getRecommendations(numRecommendationsToMake=NUM_RECOMMENDATIONS)
     try:
         recommendations = []
-        # We iterate through a combined list of games and appIDs to create the response
-        # adding both the name and appID for each recommended game to the response list as
-        # a dictionary. In the end, we return a JSON version of a list of these dictionaries.
-        for game, appID in zip(recommendedGames, recommendedAppIDs):
+        # We iterate through a combined list of games, appIDs, and movie URLs,
+        # adding it all to a list of dictionaries for easy consumption on the frontend.
+        for game, appID, movieURL in zip(recommendedGames, recommendedAppIDs, recommendedMovieUrls):
             recommendations.append({
                 "name": game,
-                "appID": appID
+                "appID": appID,
+                "movieURL": movieURL
             })
         
         return jsonify({"recommendations": recommendations})
