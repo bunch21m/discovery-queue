@@ -47,6 +47,15 @@
             margin: 0 0 15px 0;
             color: #666;
         }
+        .feedback-div {
+            margin-top: 10px;
+        }
+        .feedback-button {
+            background-color: #e74c3c;
+            margin-right: 5px;
+            font-size: 12px;
+            padding: 5px 10px;
+        }
         video {
             width: 100%;
             border-radius: 4px;
@@ -65,6 +74,8 @@
 
     <!-- This script handles fetching and displaying game recommendations -->
     <script>
+        currentCards = [];
+
         document.getElementById('recommendButton').addEventListener('click', async () => {
 
             // Fetch recommendations from the backend
@@ -83,9 +94,11 @@
                 return;
             }
             
-            // For each recommendation, create a new paragraph element and add it to the recommendations div
+            // For each recommendation, we create a card with the game details
             const recommendationsDiv = document.getElementById('recommendations');
             recommendationsDiv.innerHTML = '<h2>Recommended Games:</h2>';
+            // Clear out any existing cards
+            clearRecommendations();
 
             for (let i = 0; i < data.recommendations.length; i++) {
                 const gameAndAppId = data.recommendations[i];
@@ -102,13 +115,78 @@
                 const video = document.createElement('video');
                 video.src = gameAndAppId.movieURL;
                 video.controls = true;
+
+                const feedbackOptions = ['Strongly Dislike', 'Dislike', 'Neutral', 'Like', 'Strongly Like'];
+                const feedbackDiv = document.createElement('div');
+                feedbackDiv.className = 'feedback-div';
+
+                feedbackOptions.forEach((option, index) => {
+                    const btn = document.createElement('button');
+                    btn.textContent = option;
+                    btn.className = 'feedback-button';
+
+                    btn.addEventListener('click', async () => {
+
+                        const response = await fetch('/feedback', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+
+                            body: JSON.stringify({
+                                appID: gameAndAppId.appID,
+                                feedback: index
+                            })
+                        });
+
+                        if (response.ok) {
+                            alert(`Feedback "${option}" submitted for ${gameAndAppId.name}`);
+                            // Now we must remove this card from the recommendations
+                            // since we don't want to let the user rate the same game multiple times
+                            removeCard(card);
+                        } else {
+                            const data = await response.json();
+                            alert(`Error submitting feedback: ${data.error}`);
+                        }
+                    });
+                    feedbackDiv.appendChild(btn);
+                });
                 
                 card.appendChild(title);
                 card.appendChild(details);
                 card.appendChild(video);
-                recommendationsDiv.appendChild(card);
+                card.appendChild(feedbackDiv);
+                addCard(card);
             }
-        }); 
+        });
+
+
+        // Helper function which clears out all current recommendation cards
+        function clearRecommendations() {
+            const recommendationsDiv = document.getElementById('recommendations');
+            recommendationsDiv.innerHTML = '';
+            currentCards = [];
+        }
+
+
+        // Helper function which removes a specific card from the recommendations
+        function removeCard(card) {
+            const recommendationsDiv = document.getElementById('recommendations');
+            recommendationsDiv.removeChild(card);
+            currentCards = currentCards.filter(c => c !== card);
+            // If there are no more cards, show a message
+            if (currentCards.length === 0) {
+                recommendationsDiv.innerHTML = '<h2>No more recommendations available.</h2>';
+            }
+        }
+
+
+        // Helper function which adds a specific card to the recommendations
+        function addCard(card) {
+            const recommendationsDiv = document.getElementById('recommendations');
+            recommendationsDiv.appendChild(card);
+            currentCards.push(card);
+        }
     </script>
 </body>
 </html>

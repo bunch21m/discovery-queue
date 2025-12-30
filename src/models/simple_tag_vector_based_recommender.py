@@ -119,13 +119,26 @@ class SimpleTagVectorBasedRecommender:
             sorted_games = sorted(self.dataset.values(), key=lambda x: x['positive'], reverse=True)
             recommendations = [game['name'] for game in sorted_games[:num_recommendations_to_make]]
             app_ids = [game['app_id'] for game in sorted_games[:num_recommendations_to_make]]
-            return recommendations, app_ids
+            movie_urls = []
+            for game in sorted_games[:num_recommendations_to_make]:
+                movies = game.get('movies', [])
+                if movies and isinstance(movies, list):
+                    first_movie = movies[0]
+                    movie_urls.append(first_movie)
+                else:
+                    movie_urls.append(None)
+
+            return recommendations, app_ids, movie_urls
         
         # Otherwise, we must compute cosine similarity between user interest vector and each game's tag vector
         # for every game in the dataset
         similarity_scores = []
         for app in self.dataset:
             game = self.dataset[app]
+            movies = game.get('movies', [])
+            first_movie = None
+            if movies and isinstance(movies, list):
+                first_movie = movies[0]
             game_tag_vector = self.game_tag_vectors[app]
 
             # Compute cosine similarity
@@ -138,11 +151,12 @@ class SimpleTagVectorBasedRecommender:
             else:
                 cosine_similarity = 0
 
-            similarity_scores.append((cosine_similarity, game['name'], app))
+            similarity_scores.append((cosine_similarity, game['name'], app, first_movie))
 
         # Sort games by similarity score in descending order
         similarity_scores.sort(key=lambda x: x[0], reverse=True)
         recommendations = [similarity_scores[i][1] for i in range(num_recommendations_to_make)]
         app_ids = [similarity_scores[i][2] for i in range(num_recommendations_to_make)]
+        movie_urls = [similarity_scores[i][3] for i in range(num_recommendations_to_make)]
 
-        return recommendations, app_ids
+        return recommendations, app_ids, movie_urls
