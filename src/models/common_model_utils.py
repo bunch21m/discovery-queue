@@ -43,13 +43,14 @@ def load_all_games_from_database():
 
         conn = psycopg2.connect(db_url)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT appid, name, positive, tags, data FROM games")
+            cur.execute("SELECT appid, name, positive, negative, tags, genres, price, data FROM games")
             rows = cur.fetchall()
             for row in rows:
                 app_id = row.get('appid')
                 game = {
                     'name': row.get('name'),
                     'positive': int(row.get('positive') or 0),
+                    'negative': int(row.get('negative') or 0),
                     'tags': row.get('tags') or [],
                     'genres': row.get('genres') or [],
                     'price': float(row.get('price') or 0)

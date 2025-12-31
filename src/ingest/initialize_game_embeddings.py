@@ -54,10 +54,13 @@ def initialize_game_embeddings(db_url, dim=30):
                 f"""
                 CREATE TABLE IF NOT EXISTS gameEmbeddings (
                     id bigserial PRIMARY KEY,
+                    appid VARCHAR(255),
                     embedding vector({dim})
                 );
                 """
             )
+            # Create index on appid for faster interaction lookups if needed (though we mainly search by vector)
+            cur.execute("CREATE INDEX IF NOT EXISTS game_embeddings_appid_idx ON gameEmbeddings (appid);")
             
         conn.commit()
         print(f"GameEmbeddings table is available (dim={dim})")

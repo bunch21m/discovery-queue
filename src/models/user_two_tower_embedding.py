@@ -16,8 +16,6 @@ GENRE_PROJ_DIM = 64  # projected dimension for genres
 # ---------------------------------------------
 
 
-
-
 def embed_user_id_deterministic(user_id_series):
     """Vectorized hashing of AppIDs to deterministic floats."""
     def hash_id(aid):
@@ -30,6 +28,137 @@ def embed_user_id_deterministic(user_id_series):
     
     return np.stack(user_id_series.apply(hash_id).values)
 
+def compute_user_embedding(user_id, interactions_df, games_df, svd=None, mlb=None, genre_matrix_multi_hot=None):
+    """
+    Core logic to compute user embedding vectors.
+    Args:
+        user_id (str/int): User ID.
+        interactions_df (pd.DataFrame): User interactions.
+        games_df (pd.DataFrame): All games interactions with genres and price. 
+                                 Index should be appID.
+        svd (TruncatedSVD): Pre-fitted SVD model.
+        mlb (MultiLabelBinarizer): Pre-fitted MLB.
+    """
+    
+    # ID Embedding
+    user_id_emb = embed_user_id_deterministic(pd.Series([user_id]))
+    
+    # Genre Processing
+    # Genre Processing
+    if genre_matrix_multi_hot is None:
+        if mlb is None:
+            mlb = MultiLabelBinarizer(sparse_output=False)
+            genres = games_df['genres'].apply(lambda x: x if isinstance(x, list) else [])
+            genre_matrix_multi_hot = mlb.fit_transform(genres)
+            
+            # Auto-fit SVD if not provided and needed
+            actual_dim = min(GENRE_PROJ_DIM, genre_matrix_multi_hot.shape[1] - 1)
+            if actual_dim > 0 and svd is None:
+                svd = TruncatedSVD(n_components=actual_dim, random_state=42)
+                svd.fit(genre_matrix_multi_hot)
+        else:
+            genres = games_df['genres'].apply(lambda x: x if isinstance(x, list) else [])
+            genre_matrix_multi_hot = mlb.transform(genres)
+            # SVD must be provided if passed outside or fitted here previously.
+    
+    # We need actual_dim for user embedding
+    actual_dim = min(GENRE_PROJ_DIM, genre_matrix_multi_hot.shape[1] - 1)
+
+    
+    user_genres = np.zeros(genre_matrix_multi_hot.shape[1], dtype=np.float32)
+    wishlisted_prices = []
+    
+    # Process interactions
+    if not interactions_df.empty:
+        # Standardize column name
+        if 'appid' in interactions_df.columns:
+            interactions_df = interactions_df.rename(columns={'appid': 'app_id'})
+
+        # Filter for valid games
+        valid_interactions = interactions_df[interactions_df['app_id'].isin(games_df.index)]
+        
+        for _, row in valid_interactions.iterrows():
+            app_id = row['app_id']
+            interaction_type = row['interactiontype']
+            
+            if interaction_type == 'wishlist':
+                # Get index in games_df
+                # Assuming games_df index is unique appIDs
+                try:
+                    idx = games_df.index.get_loc(app_id)
+                    # If duplicate index, get_loc returns slice or array, handle simple case
+                    if isinstance(idx, int):
+                        user_genres += genre_matrix_multi_hot[idx]
+                        price = games_df.iloc[idx]['price']
+                        wishlisted_prices.append(price)
+                    elif isinstance(idx, slice) or isinstance(idx, np.ndarray):
+                        # Take first match
+                        if isinstance(idx, slice):
+                            start = idx.start
+                            user_genres += genre_matrix_multi_hot[start]
+                            price = games_df.iloc[start]['price']
+                        else:
+                            # bool array or int array
+                            first_idx = np.where(idx)[0][0] if idx.dtype == bool else idx[0]
+                            user_genres += genre_matrix_multi_hot[first_idx]
+                            price = games_df.iloc[first_idx]['price']
+                        wishlisted_prices.append(price)
+
+                except KeyError:
+                    continue
+
+    # Apply same dimensionality transformation to user genre preferences
+    if user_genres.sum() > 0 and actual_dim > 0:
+        if svd:
+             user_genre_embedding = svd.transform(user_genres.reshape(1, -1)).flatten()
+        else:
+             # Should not happen if logic flows correctly
+             user_genre_embedding = user_genres
+    else:
+        user_genre_embedding = np.zeros(actual_dim if actual_dim > 0 else genre_matrix_multi_hot.shape[1])
+
+    # Wishlist stats
+    wishlisted_prices = np.array(wishlisted_prices)
+    if interactions_df.empty:
+        wishlist_rate = 0.0
+    else:
+        wishlist_rate = sum(interactions_df['interactiontype'] == 'wishlist') / len(interactions_df)
+
+    free_wishlisted = (wishlisted_prices == 0).sum()
+    low_wishlisted = ((wishlisted_prices > 0) & (wishlisted_prices < 10)).sum()
+    mid_wishlisted = ((wishlisted_prices >= 10) & (wishlisted_prices < 30)).sum()
+    high_wishlisted = (wishlisted_prices >= 30).sum()
+
+    # recent skip rate
+    if not interactions_df.empty and 'timestamp' in interactions_df.columns:
+        recent_interactions = interactions_df.sort_values(by='timestamp', ascending=False).head(20)
+        recent_skip_rate = sum(recent_interactions['interactiontype'] == 'skip') / len(recent_interactions)
+    elif not interactions_df.empty:
+        # no timestamp, just take head
+        recent_interactions = interactions_df.head(20)
+        recent_skip_rate = sum(recent_interactions['interactiontype'] == 'skip') / len(recent_interactions)
+    else:
+        recent_skip_rate = 0.0
+
+    return np.concatenate(
+        [
+            user_id_emb[0].astype(np.float32),
+            user_genre_embedding.astype(np.float32),
+            np.array(
+                [
+                    wishlist_rate,
+                    free_wishlisted,
+                    low_wishlisted,
+                    mid_wishlisted,
+                    high_wishlisted,
+                    recent_skip_rate,
+                ],
+                dtype=np.float32,
+            ),
+        ],
+        axis=0,
+    ).astype(np.float32)
+
 def concat_user_features(username):
     """
     Concatenates user features for the two-tower embedding model.
@@ -37,129 +166,37 @@ def concat_user_features(username):
     Args:
             username (str): The username of the user to process.
     """
-    
-    
     user = get_user_by_username(username)
     if not user:
         raise ValueError(f"User {username} not found in database")
 
-    
-    feature_list = []
-    
-    # ID Embedding
-    user_id_emb = embed_user_id_deterministic(pd.Series([user['userid']]))
-    
     interactions = get_users_interactions_from_database(user['userid'])
     interactions_df = pd.DataFrame.from_dict(interactions, orient='index')
     
     # get all games to create multihot genre feature
     games = load_all_games_from_database() 
     games_df = pd.DataFrame.from_dict(games, orient='index')
-    games_df['appID'] = games_df.index
+    games_df['app_id'] = games_df.index
+    
+    # We pass None for svd/mlb so they are fitted on the fly as per original logic
+    # This might be inefficient for production (should load saved artifacts), 
+    # but maintains original behavior logic for now.
+    return compute_user_embedding(user['userid'], interactions_df, games_df)
 
-    # Genre Processing
-    # First create multi-hot encoding for all games
-    # Use svd to reduce dimensionality
-    # Apply same transformation to user genre preferences
-    
-    
-    
+def prepare_genre_processors(games_df):
+    """
+    Helper to pre-fit MLB and SVD and pre-compute genre matrix for batch processing.
+    Returns:
+        tuple: (mlb, svd, genre_matrix_multi_hot)
+    """
     mlb = MultiLabelBinarizer(sparse_output=False)
-    # Handle missing genres
     genres = games_df['genres'].apply(lambda x: x if isinstance(x, list) else [])
-    
     genre_matrix_multi_hot = mlb.fit_transform(genres)
-
-    # Apply dimensionality reduction globally
+    
+    svd = None
     actual_dim = min(GENRE_PROJ_DIM, genre_matrix_multi_hot.shape[1] - 1)
     if actual_dim > 0:
         svd = TruncatedSVD(n_components=actual_dim, random_state=42)
-        genre_features = svd.fit_transform(genre_matrix_multi_hot)
-    else:
-        genre_features = genre_matrix_multi_hot
-
-    
-    wishlisted_games = []
-    user_genres = np.zeros(genre_matrix_multi_hot.shape[1], dtype=np.float32)
-
-    # Count genres from wishlisted games and fill wishlistedGames
-    for _, row in interactions_df.iterrows():
-        app_id = row['appid']
-        interaction_type = row['interactiontype']
-
-        if app_id not in games_df.index:
-            continue
-
-        if interaction_type == 'wishlist':
-            game = get_game_from_database(app_id)
-            if game:
-                wishlisted_games.append(game)
-                user_genres += genre_matrix_multi_hot[games_df.index.get_loc(app_id)]
-
-    # Apply same dimensionality transformation to user genre preferences
-    if user_genres.sum() > 0 and actual_dim > 0:
-        user_genre_embedding = svd.transform(user_genres.reshape(1, -1)).flatten()
-    else:
-        user_genre_embedding = np.zeros(actual_dim if actual_dim > 0 else genre_matrix_multi_hot.shape[1])
-
-    wishlisted_games_df = pd.DataFrame(wishlisted_games)
-    
-    # Wishlist Rate
-    wishlist_rate = sum(interactions_df['interactiontype'] == 'wishlist') / len(interactions_df) if len(interactions_df) > 0 else 0.0
-    
-    # Bucket wishlisted games by price ranges (Free, <10, <30, >=30)
-    if not wishlisted_games_df.empty and 'price' in wishlisted_games_df.columns:
-        free_wishlisted = (wishlisted_games_df['price'] == 0).sum()
-        low_wishlisted = ((wishlisted_games_df['price'] > 0) & (wishlisted_games_df['price'] < 10)).sum()
-        mid_wishlisted = ((wishlisted_games_df['price'] >= 10) & (wishlisted_games_df['price'] < 30)).sum()
-        high_wishlisted = (wishlisted_games_df['price'] >= 30).sum()
-    else:
-        free_wishlisted = low_wishlisted = mid_wishlisted = high_wishlisted = 0
-
-    # recent skip rate(last 20 interactions)
-    recent_interactions = interactions_df.sort_values(by='timestamp', ascending=False).head(20)
-    recent_skip_rate = sum(recent_interactions['interactiontype'] == 'skip') / len(recent_interactions) if len(recent_interactions) > 0 else 0.0
-    
-    
-    
-    # Concatenate all features
-    feature_list.append(user_id_emb[0])
-    print(f"userIdEmb: {user_id_emb[0]}")
-    feature_list.append(user_genre_embedding)
-    print(f"userGenreEmbedding: {user_genre_embedding}")
-    feature_list.append(wishlist_rate)
-    print(f"wishlistRate: {wishlist_rate}")
-    feature_list.append(free_wishlisted)
-    print(f"freeWishlisted: {free_wishlisted}")
-    feature_list.append(low_wishlisted)
-    print(f"lowWishlisted: {low_wishlisted}")
-    feature_list.append(mid_wishlisted)
-    print(f"midWishlisted: {mid_wishlisted}")
-    feature_list.append(high_wishlisted)
-    print(f"highWishlisted: {high_wishlisted}")
-    feature_list.append(recent_skip_rate)
-    print(f"recentSkipRate: {recent_skip_rate}")  
-    
-
-    
-
-    return np.concatenate(
-    [
-        user_id_emb[0].astype(np.float32),
-        user_genre_embedding.astype(np.float32),
-        np.array(
-            [
-                wishlist_rate,
-                free_wishlisted,
-                low_wishlisted,
-                mid_wishlisted,
-                high_wishlisted,
-                recent_skip_rate,
-            ],
-            dtype=np.float32,
-        ),
-    ],
-    axis=0,
-).astype(np.float32)
-    
-    
+        svd.fit(genre_matrix_multi_hot)
+        
+    return mlb, svd, genre_matrix_multi_hot

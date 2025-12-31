@@ -43,6 +43,7 @@ def init_schema(conn):
                 appid TEXT PRIMARY KEY,
                 name TEXT,
                 positive INTEGER,
+                negative INTEGER,
                 tags TEXT[],
                 genres TEXT[],
                 price FLOAT,
@@ -105,6 +106,7 @@ def load_data(conn, json_path='data/games.json'):
         for app_id, game in dataset.items():
             name = game.get('name')
             positive = int(game.get('positive') or 0)
+            negative = int(game.get('negative') or 0)
             tags = game.get('tags') or []
             if isinstance(tags, dict):
                 tags = list(tags.keys())
@@ -115,17 +117,18 @@ def load_data(conn, json_path='data/games.json'):
 
             cur.execute(
                 """
-                INSERT INTO games (appid, name, positive, tags, genres, price, data)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO games (appid, name, positive, negative, tags, genres, price, data)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (appid) DO UPDATE SET
                     name = EXCLUDED.name,
                     positive = EXCLUDED.positive,
+                    negative = EXCLUDED.negative,
                     tags = EXCLUDED.tags,
                     genres = EXCLUDED.genres,
                     price = EXCLUDED.price,
                     data = EXCLUDED.data;
                 """,
-                (str(app_id), name, positive, tags, genres, price, Json(game))
+                (str(app_id), name, positive, negative, tags, genres, price, Json(game))
             )
     conn.commit()
 

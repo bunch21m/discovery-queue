@@ -1,9 +1,12 @@
 from flask import Flask, render_template, jsonify, request
-from src.models.recommender import Recommender
+from src.models.two_tower_candidate_pooler import TwoTowerRecommender
+from src.db.user_functions import get_user_by_username
+from src.db.interaction_functions import add_user_interaction_to_database
 
 NUM_RECOMMENDATIONS = 10
 
-recommender_object = Recommender("simpleTagVectorBased")
+# Initialize Two Tower Recommender
+recommender_object = TwoTowerRecommender()
 
 app = Flask(__name__, template_folder='frontend')
 
@@ -26,7 +29,10 @@ def recommend():
     Returns:
             JSON: A JSON object containing recommended games and their appIDs.
     """
-    recommended_games, recommended_app_ids, recommended_movie_urls = recommender_object.get_recommendations(num_recommendations_to_make=NUM_RECOMMENDATIONS)
+    # Get username from query params, default to 'test'
+    username = request.args.get('username', 'test')
+
+    recommended_games, recommended_app_ids, recommended_movie_urls = recommender_object.get_recommendations(username, k=NUM_RECOMMENDATIONS)
     try:
         recommendations = []
         # We iterate through a combined list of games, appIDs, and movie URLs,
@@ -44,38 +50,32 @@ def recommend():
     
 # Route for recieving whether the user liked a recommendation or not
 @app.route('/feedback', methods=['POST'])
-def get_user_feedback():
-    """
-    Endpoint to receive user feedback on recommendations.
-
-    Expects a JSON payload with 'appID' and 'feedback' fields.
-    'feedback' should be either 0, 1, 2, 3, or 4 representing:
-        0 - Strongly Dislike
-        1 - Dislike
-        2 - Neutral
-        3 - Like
-        4 - Strongly Like
-
-    Returns:
-            JSON: A JSON object confirming receipt of feedback.
-    """
+def submit_feedback():
     data = request.get_json()
     app_id = data.get('appID')
-    feedback = data.get('feedback')
-    # print(f"Received feedback for App ID {app_id}: {feedback}")
-    # return jsonify({"status": "Feedback received"}), 200
-    # Maps feedback levels to floats for the tag vector recommender
-    feedback_mapping = {
-        0: 0.0,  # Strongly Dislike
-        1: 0.25, # Dislike
-        2: 0.5,  # Neutral
-        3: 0.75, # Like
-        4: 1.0   # Strongly Like
-    }
-    interest_level = feedback_mapping.get(feedback, 0.5)  # Default to Neutral if invalid feedback
-    recommender_object.recommender_object.update_user_interest_vector(app_id, interest_level)
-    print(f"Updated user interest vector with App ID {app_id} and interest level {interest_level}")
-    return jsonify({"status": "Feedback received"}), 200
+    feedback_type = data.get('feedback') # 'wishlist' or 'skip'
+    username = data.get('username', 'test')
+
+    if not app_id or not feedback_type:
+        return jsonify({"error": "Missing appID or feedback"}), 400
+
+    try:
+        user_data = get_user_by_username(username)
+        if not user_data:
+            return jsonify({"error": f"User {username} not found"}), 404
+        
+        user_id = user_data['userid']
+        
+        success = add_user_interaction_to_database(app_id, user_id, feedback_type)
+        
+        if success:
+            return jsonify({"message": f"Feedback {feedback_type} received"}), 200
+        else:
+            return jsonify({"error": "Failed to save interaction"}), 500
+
+    except Exception as e:
+        print(f"Error handling feedback: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # Run the application

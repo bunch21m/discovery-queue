@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <title>Game recommender</title>
     <style>
@@ -12,9 +13,11 @@
             background-color: #f4f4f9;
             color: #333;
         }
+
         h1 {
             color: #2c3e50;
         }
+
         button {
             background-color: #3498db;
             color: white;
@@ -25,75 +28,88 @@
             cursor: pointer;
             transition: background-color 0.3s;
         }
+
         button:hover {
             background-color: #2980b9;
         }
+
         #recommendations {
             margin-top: 20px;
             text-align: left;
         }
+
         .recommendation-card {
             background: white;
             padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             margin: 20px 0;
         }
+
         .recommendation-card h3 {
             margin: 0 0 10px 0;
             color: #2c3e50;
         }
+
         .recommendation-card p {
             margin: 0 0 15px 0;
             color: #666;
         }
+
         .feedback-div {
             margin-top: 10px;
         }
+
         .feedback-button {
             background-color: #e74c3c;
             margin-right: 5px;
             font-size: 12px;
             padding: 5px 10px;
         }
+
         video {
             width: 100%;
             border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
             background-color: #000;
         }
     </style>
 </head>
+
 <body>
     <h1>Discovery Queue Recommender</h1>
-    <p>Click the button below to get game recommendations based on positive ratings.
-        
+    <p>Click the button below to get game recommendations.
+
     </p><button id="recommendButton">Get Recommendations</button>
     <div id="recommendations"></div>
-    
+
 
     <!-- This script handles fetching and displaying game recommendations -->
     <script>
         currentCards = [];
 
         document.getElementById('recommendButton').addEventListener('click', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const username = urlParams.get('username') || 'test';
 
             // Fetch recommendations from the backend
-            const response = await fetch('/recommend');
+            const response = await fetch(`/recommend?username=${username}`);
 
             // The data must be parsed from JSON, no other part of the response is needed
             const data = await response.json();
 
             if (!response.ok) {
                 console.error('Error fetching recommendations:', data.error);
+                alert('Error fetching recommendations: ' + data.error);
                 return;
             }
 
             if (data.recommendations.length === 0) {
-                recommendationsDiv.innerHTML = '<p>Error, no recommendations.</p>';
+                const recommendationsDiv = document.getElementById('recommendations');
+                recommendationsDiv.innerHTML = '<p>No recommendations found/available.</p>';
                 return;
             }
-            
+
             // For each recommendation, we create a card with the game details
             const recommendationsDiv = document.getElementById('recommendations');
             recommendationsDiv.innerHTML = '<h2>Recommended Games:</h2>';
@@ -102,7 +118,7 @@
 
             for (let i = 0; i < data.recommendations.length; i++) {
                 const gameAndAppId = data.recommendations[i];
-                
+
                 const card = document.createElement('div');
                 card.className = 'recommendation-card';
 
@@ -113,53 +129,62 @@
                 details.textContent = `App ID: ${gameAndAppId.appID}`;
 
                 const video = document.createElement('video');
-                video.src = gameAndAppId.movieURL;
-                video.controls = true;
+                if (gameAndAppId.movieURL) {
+                    video.src = gameAndAppId.movieURL;
+                    video.controls = true;
+                } else {
+                    video.style.display = 'none';
+                }
 
-                const feedbackOptions = ['Strongly Dislike', 'Dislike', 'Neutral', 'Like', 'Strongly Like'];
                 const feedbackDiv = document.createElement('div');
                 feedbackDiv.className = 'feedback-div';
 
-                feedbackOptions.forEach((option, index) => {
-                    const btn = document.createElement('button');
-                    btn.textContent = option;
-                    btn.className = 'feedback-button';
+                // Wishlist Button
+                const wishlistBtn = document.createElement('button');
+                wishlistBtn.textContent = 'Wishlist';
+                wishlistBtn.className = 'feedback-button';
+                wishlistBtn.style.backgroundColor = '#2ecc71'; // Green
+                wishlistBtn.addEventListener('click', () => sendFeedback(gameAndAppId, 'wishlist', card, username));
 
-                    btn.addEventListener('click', async () => {
+                // Skip Button
+                const skipBtn = document.createElement('button');
+                skipBtn.textContent = 'Skip';
+                skipBtn.className = 'feedback-button';
+                skipBtn.style.backgroundColor = '#95a5a6'; // Gray
+                skipBtn.addEventListener('click', () => sendFeedback(gameAndAppId, 'skip', card, username));
 
-                        const response = await fetch('/feedback', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
+                feedbackDiv.appendChild(wishlistBtn);
+                feedbackDiv.appendChild(skipBtn);
 
-                            body: JSON.stringify({
-                                appID: gameAndAppId.appID,
-                                feedback: index
-                            })
-                        });
-
-                        if (response.ok) {
-                            alert(`Feedback "${option}" submitted for ${gameAndAppId.name}`);
-                            // Now we must remove this card from the recommendations
-                            // since we don't want to let the user rate the same game multiple times
-                            removeCard(card);
-                        } else {
-                            const data = await response.json();
-                            alert(`Error submitting feedback: ${data.error}`);
-                        }
-                    });
-                    feedbackDiv.appendChild(btn);
-                });
-                
                 card.appendChild(title);
                 card.appendChild(details);
-                card.appendChild(video);
+                if (gameAndAppId.movieURL) card.appendChild(video);
                 card.appendChild(feedbackDiv);
                 addCard(card);
             }
         });
 
+        async function sendFeedback(gameAndAppId, feedbackType, card, username) {
+            const response = await fetch('/feedback', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    appID: gameAndAppId.appID,
+                    feedback: feedbackType,
+                    username: username
+                })
+            });
+
+            if (response.ok) {
+                // alert(`Marked as ${feedbackType}: ${gameAndAppId.name}`);
+                removeCard(card);
+            } else {
+                const data = await response.json();
+                alert(`Error submitting feedback: ${data.error}`);
+            }
+        }
 
         // Helper function which clears out all current recommendation cards
         function clearRecommendations() {
@@ -172,11 +197,13 @@
         // Helper function which removes a specific card from the recommendations
         function removeCard(card) {
             const recommendationsDiv = document.getElementById('recommendations');
-            recommendationsDiv.removeChild(card);
+            if (card.parentNode === recommendationsDiv) {
+                recommendationsDiv.removeChild(card);
+            }
             currentCards = currentCards.filter(c => c !== card);
             // If there are no more cards, show a message
             if (currentCards.length === 0) {
-                recommendationsDiv.innerHTML = '<h2>No more recommendations available.</h2>';
+                recommendationsDiv.innerHTML = '<h2>No more recommendations. Click "Get Recommendations" for more.</h2>';
             }
         }
 
@@ -189,4 +216,5 @@
         }
     </script>
 </body>
+
 </html>

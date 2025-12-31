@@ -2,7 +2,6 @@ services:
   db:
     image: postgres:15
     environment:
-      # Use the *_FILE convention so the image reads credentials from files
       POSTGRES_USER_FILE: /run/secrets/postgres_user
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_DB_FILE: /run/secrets/postgres_db
@@ -12,7 +11,7 @@ services:
       - postgres_user
       - postgres_password
       - postgres_db
-  
+
   gameEmbeddings:
     image: pgvector/pgvector:pg18-trixie
     volumes:
@@ -31,12 +30,14 @@ services:
   web:
     build: .
     stdin_open: true # docker run -i
-    tty: true        # docker run -t
+    tty: true # docker run -t
     depends_on:
       - db
       - gameEmbeddings
     volumes:
       - .:/app:cached
+    environment:
+      EMBEDDING_DIM: 32
     secrets:
       - postgres_user
       - postgres_password
@@ -44,11 +45,12 @@ services:
     ports:
       - "5000:5000"
     command: >
-      bash -c "python -m src.ingest.initialize_database && python -m src.ingest.create_game_embeddings && python -m src.webapp.app"
+      bash -c "python -m src.ingest.initialize_database && python -m src.ingest.initialize_game_embeddings && python -m src.ingest.generate_training_pairs && python -m src.models.train_two_tower_model && python -m src.ingest.store_game_embeddings && python -m src.webapp.app"
 
 volumes:
   db_data:
   game_embeddings_data:
+
 
 secrets:
   postgres_user:
