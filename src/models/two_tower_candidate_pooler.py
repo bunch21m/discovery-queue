@@ -10,7 +10,7 @@ from psycopg2.extras import RealDictCursor
 from src.models.train_two_tower_model import TwoTowerModel
 from src.models.user_two_tower_embedding import compute_user_embedding, concat_user_features
 from src.ingest.initialize_game_embeddings import build_database_url
-from src.models.common_model_utils import load_all_games_from_database
+from src.db.game_functions import get_game_from_database
 from src.db.user_functions import get_user_by_username
 from src.db.interaction_functions import get_users_interactions_from_database
 
@@ -103,10 +103,10 @@ class TwoTowerRecommender:
             # 2. ANN Retrieval from DB
             # Exploration Strategy: Fetch 100 candidates to mix relevance and diversity
             pool_size = 100
-            candidates, cand_ids, cand_movies = self._retrieve_nearest_neighbors(user_vec, pool_size, exclude_app_ids=seen_app_ids)
+            candidates = self._retrieve_nearest_neighbors(user_vec, pool_size, exclude_app_ids=seen_app_ids)
             
             if not candidates:
-                return [], [], []
+                return {}
                 
             # Hybrid Strategy: Top 5 Nearest + 5 Random from the rest
             # We assume k=10 usually. We'll split k roughly in half.
@@ -115,7 +115,7 @@ class TwoTowerRecommender:
             
             # If total candidates are less than k, just return all
             if len(candidates) <= k:
-                return candidates, cand_ids, cand_movies
+                return candidates
                 
             # 1. Top Nearest (Indices 0 to n_nearest-1)
             final_indices = list(range(n_nearest))
@@ -131,16 +131,18 @@ class TwoTowerRecommender:
                  final_indices.extend(random_indices)
             
             # Construct final result
-            final_games = [candidates[i] for i in final_indices]
-            final_ids = [cand_ids[i] for i in final_indices]
-            final_movies = [cand_movies[i] for i in final_indices]
+            final_games =  []
+            for idx in final_indices:
+                app_id = list(candidates.keys())[idx]
+                game_data = candidates[app_id]
+                final_games.append(game_data)
             
-            return final_games, final_ids, final_movies
+            return final_games
             
         except Exception as e:
             print(f"Error generating recommendations: {e}")
-            return [], [], []
-
+            return {}   
+        
     def _retrieve_nearest_neighbors(self, vector, k, exclude_app_ids=None):
         db_url = build_database_url()
         conn = psycopg2.connect(db_url)
@@ -182,52 +184,23 @@ class TwoTowerRecommender:
         # Loading all might be cached/fast enough since we did it elsewhere.
         # Or faster: query `games` table for these IDs.
         
-        game_names = []
-        app_ids = []
-        movie_urls = [] # Not sure where movie URL comes from, games.json doesn't show it explicitly in my read.
-        # I'll check common_model_utils or just assume empty for now.
+        games_data = {}
         
         # Let's batch query the games table
         if results:
             games_data = self._fetch_game_details(results)
-            # Maintain order
-            for app_id in results:
-                if app_id in games_data:
-                     g = games_data[app_id]
-                     game_names.append(g.get('name', 'Unknown'))
-                     app_ids.append(app_id)
-                     data = g.get('data', {})
-                     movies = data.get('movies', [])
-                     if movies and isinstance(movies, list) and len(movies) > 0:
-                         movie_urls.append(movies[0])
-                     else:
-                         movie_urls.append(None) 
         
-        return game_names, app_ids, movie_urls
+        return games_data
 
     def _fetch_game_details(self, app_ids):
-        # Helper to get names
-        # We assume standard DB connection
-        from src.models.common_model_utils import read_secret
-        user = read_secret('/run/secrets/postgres_user')
-        password = read_secret('/run/secrets/postgres_password')
-        db_name = read_secret('/run/secrets/postgres_db')
-        db_url = f"postgresql://{user}:{password}@db:5432/{db_name}"
         
         data = {}
-        try:
-            conn = psycopg2.connect(db_url)
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # parameterized IN clause
-                placeholders = ','.join(['%s'] * len(app_ids))
-                query = f"SELECT appid, name, data FROM games WHERE appid IN ({placeholders})"
-                cur.execute(query, tuple(app_ids))
-                rows = cur.fetchall()
-                for row in rows:
-                    data[str(row['appid'])] = row
-            conn.close()
-        except Exception:
-            pass
+
+        for app_id in app_ids:
+            game = get_game_from_database(app_id)
+            if game:
+                data[app_id] = game
+                
         return data
 
     def _fetch_cold_start_games(self, app_ids):
@@ -237,20 +210,4 @@ class TwoTowerRecommender:
         """
         games_data = self._fetch_game_details(app_ids)
         
-        game_names = []
-        valid_app_ids = []
-        movie_urls = []
-        
-        for app_id in app_ids:
-            if app_id in games_data:
-                g = games_data[app_id]
-                game_names.append(g.get('name', 'Unknown'))
-                valid_app_ids.append(app_id)
-                data = g.get('data', {})
-                movies = data.get('movies', [])
-                if movies and isinstance(movies, list) and len(movies) > 0:
-                    movie_urls.append(movies[0])
-                else:
-                    movie_urls.append(None)
-        
-        return game_names, valid_app_ids, movie_urls
+        return games_data

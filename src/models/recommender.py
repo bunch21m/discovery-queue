@@ -1,5 +1,6 @@
 from src.models.simple_positive_rating_based_recommender import SimplePositiveRatingBasedRecommender
 from src.models.simple_tag_vector_based_recommender import SimpleTagVectorBasedRecommender
+from src.models.two_tower_candidate_pooler import TwoTowerRecommender
 
 class Recommender:
     """
@@ -14,7 +15,8 @@ class Recommender:
     # The class must implement a get_recommendations method
     implemented_recommenders = {
         "simplePositiveRatingBased": SimplePositiveRatingBasedRecommender,
-        "simpleTagVectorBased": SimpleTagVectorBasedRecommender
+        "simpleTagVectorBased": SimpleTagVectorBasedRecommender,
+        "twoTower": TwoTowerRecommender
     }
 
     def __init__(self, recommender_type: str, *args, **kwargs) -> None:

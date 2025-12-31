@@ -1,4 +1,4 @@
-from src.models.common_model_utils import load_all_games_from_database
+from src.db.game_functions import load_all_games_from_database
 
 class SimpleTagVectorBasedRecommender:
     """

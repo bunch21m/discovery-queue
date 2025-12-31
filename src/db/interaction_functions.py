@@ -1,4 +1,4 @@
-from src.models.common_model_utils import read_secret
+from src.db.game_functions import read_secret
 
 def get_users_interactions_from_database(user_id):
     """

@@ -1,12 +1,12 @@
 from flask import Flask, render_template, jsonify, request
-from src.models.two_tower_candidate_pooler import TwoTowerRecommender
+from src.models.recommender import Recommender
 from src.db.user_functions import get_user_by_username
 from src.db.interaction_functions import add_user_interaction_to_database
 
 NUM_RECOMMENDATIONS = 10
 
 # Initialize Two Tower Recommender
-recommender_object = TwoTowerRecommender()
+recommender_object = Recommender("twoTower")
 
 app = Flask(__name__, template_folder='frontend')
 
@@ -32,16 +32,68 @@ def recommend():
     # Get username from query params, default to 'test'
     username = request.args.get('username', 'test')
 
-    recommended_games, recommended_app_ids, recommended_movie_urls = recommender_object.get_recommendations(username, k=NUM_RECOMMENDATIONS)
+    recommended_games = recommender_object.get_recommendations(username, k=NUM_RECOMMENDATIONS)
+    # print(f"Recommended games for user {username}: {recommended_games}")
     try:
         recommendations = []
-        # We iterate through a combined list of games, appIDs, and movie URLs,
-        # adding it all to a list of dictionaries for easy consumption on the frontend.
-        for game, app_id, movie_url in zip(recommended_games, recommended_app_ids, recommended_movie_urls):
+        # We iterate through the recommended games and extract relevant information
+        # from each game to send back to the frontend
+        # The data field in each game contains additional information like movie URLs, screenshots, descriptions, etc.
+        
+        for game in recommended_games:
+            movie_urls = []
+            screenshot_urls = []
+            genres = []
+            categories = []
+            short_description = ""
+            detailed_description = ""
+            required_age = ""
+            price = ""
+            # Number of positive reviews
+            positive = ""
+            # Number of negative reviews
+            negative = ""
+            if game:
+                if 'movies' in game:
+                    for movie in game['movies']:
+                        movie_urls.append(movie)
+
+                if 'screenshots' in game:
+                    for screenshot in game['screenshots']:
+                        screenshot_urls.append(screenshot)
+
+                if 'genres' in game:
+                    for genre in game['genres']:
+                        genres.append(genre)
+
+                if 'categories' in game:
+                    for category in game['categories']:
+                        categories.append(category)
+                        
+                short_description = game.get('short_description', "")
+
+                detailed_description = game.get('detailed_description', "")
+
+                required_age = game.get('required_age', "")
+
+                price = game.get('price', "")
+
+                positive = game.get('positive', "")
+
+                negative = game.get('negative', "")
             recommendations.append({
-                "name": game,
-                "appID": app_id,
-                "movieURL": movie_url
+                "name": game.get('name'),
+                "appID": game.get('app_id'),
+                "movieURLs": movie_urls,
+                "screenshotURLs": screenshot_urls,
+                "genres": genres,
+                "categories": categories,
+                "shortDescription": short_description,
+                "detailedDescription": detailed_description,
+                "requiredAge": required_age,
+                "price": price,
+                "positive": positive,
+                "negative": negative
             })
         
         return jsonify({"recommendations": recommendations})

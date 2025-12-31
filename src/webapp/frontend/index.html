@@ -6,7 +6,7 @@
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
             text-align: center;
@@ -14,9 +14,7 @@
             color: #333;
         }
 
-        h1 {
-            color: #2c3e50;
-        }
+        h1 { color: #2c3e50; }
 
         button {
             background-color: #3498db;
@@ -29,9 +27,7 @@
             transition: background-color 0.3s;
         }
 
-        button:hover {
-            background-color: #2980b9;
-        }
+        button:hover { background-color: #2980b9; }
 
         #recommendations {
             margin-top: 20px;
@@ -44,175 +40,288 @@
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             margin: 20px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
         }
 
-        .recommendation-card h3 {
-            margin: 0 0 10px 0;
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .card-header h3 {
+            margin: 0;
             color: #2c3e50;
         }
 
-        .recommendation-card p {
-            margin: 0 0 15px 0;
-            color: #666;
+        .price-tag {
+            font-weight: bold;
+            color: #27ae60;
+            font-size: 1.1em;
+        }
+
+        .media-container {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+        
+        .media-container video, .media-container img {
+            height: 400px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        .tags-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .tag {
+            background-color: #ecf0f1;
+            color: #7f8c8d;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.85em;
+        }
+
+        .description {
+            color: #555;
+            line-height: 1.5;
+        }
+
+        .metadata {
+            display: flex;
+            gap: 20px;
+            font-size: 0.9em;
+            color: #7f8c8d;
         }
 
         .feedback-div {
+            display: flex;
+            gap: 10px;
             margin-top: 10px;
         }
 
         .feedback-button {
-            background-color: #e74c3c;
-            margin-right: 5px;
-            font-size: 12px;
-            padding: 5px 10px;
+            flex: 1;
+            padding: 10px;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
         }
-
-        video {
-            width: 100%;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-            background-color: #000;
+        
+        details {
+            margin-top: 10px;
+            cursor: pointer;
+        }
+        
+        summary {
+            color: #3498db;
+            font-weight: bold;
         }
     </style>
 </head>
 
 <body>
     <h1>Discovery Queue Recommender</h1>
-    <p>Click the button below to get game recommendations.
-
-    </p><button id="recommendButton">Get Recommendations</button>
+    <p>Click the button below to get game recommendations.</p>
+    <button id="recommendButton">Get Recommendations</button>
     <div id="recommendations"></div>
 
-
-    <!-- This script handles fetching and displaying game recommendations -->
     <script>
-        currentCards = [];
+        let recommendationQueue = [];
+        let currentUsername = 'test';
 
         document.getElementById('recommendButton').addEventListener('click', async () => {
             const urlParams = new URLSearchParams(window.location.search);
-            const username = urlParams.get('username') || 'test';
+            currentUsername = urlParams.get('username') || 'test';
+            const btn = document.getElementById('recommendButton');
+            
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
 
-            // Fetch recommendations from the backend
-            const response = await fetch(`/recommend?username=${username}`);
+            try {
+                const response = await fetch(`/recommend?username=${currentUsername}`);
+                const data = await response.json();
 
-            // The data must be parsed from JSON, no other part of the response is needed
-            const data = await response.json();
-
-            if (!response.ok) {
-                console.error('Error fetching recommendations:', data.error);
-                alert('Error fetching recommendations: ' + data.error);
-                return;
-            }
-
-            if (data.recommendations.length === 0) {
-                const recommendationsDiv = document.getElementById('recommendations');
-                recommendationsDiv.innerHTML = '<p>No recommendations found/available.</p>';
-                return;
-            }
-
-            // For each recommendation, we create a card with the game details
-            const recommendationsDiv = document.getElementById('recommendations');
-            recommendationsDiv.innerHTML = '<h2>Recommended Games:</h2>';
-            // Clear out any existing cards
-            clearRecommendations();
-
-            for (let i = 0; i < data.recommendations.length; i++) {
-                const gameAndAppId = data.recommendations[i];
-
-                const card = document.createElement('div');
-                card.className = 'recommendation-card';
-
-                const title = document.createElement('h3');
-                title.textContent = gameAndAppId.name;
-
-                const details = document.createElement('p');
-                details.textContent = `App ID: ${gameAndAppId.appID}`;
-
-                const video = document.createElement('video');
-                if (gameAndAppId.movieURL) {
-                    video.src = gameAndAppId.movieURL;
-                    video.controls = true;
-                } else {
-                    video.style.display = 'none';
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to fetch');
                 }
 
-                const feedbackDiv = document.createElement('div');
-                feedbackDiv.className = 'feedback-div';
+                if (!data.recommendations || data.recommendations.length === 0) {
+                    document.getElementById('recommendations').innerHTML = '<p>No recommendations found.</p>';
+                    return;
+                }
 
-                // Wishlist Button
-                const wishlistBtn = document.createElement('button');
-                wishlistBtn.textContent = 'Wishlist';
-                wishlistBtn.className = 'feedback-button';
-                wishlistBtn.style.backgroundColor = '#2ecc71'; // Green
-                wishlistBtn.addEventListener('click', () => sendFeedback(gameAndAppId, 'wishlist', card, username));
-
-                // Skip Button
-                const skipBtn = document.createElement('button');
-                skipBtn.textContent = 'Skip';
-                skipBtn.className = 'feedback-button';
-                skipBtn.style.backgroundColor = '#95a5a6'; // Gray
-                skipBtn.addEventListener('click', () => sendFeedback(gameAndAppId, 'skip', card, username));
-
-                feedbackDiv.appendChild(wishlistBtn);
-                feedbackDiv.appendChild(skipBtn);
-
-                card.appendChild(title);
-                card.appendChild(details);
-                if (gameAndAppId.movieURL) card.appendChild(video);
-                card.appendChild(feedbackDiv);
-                addCard(card);
+                recommendationQueue = data.recommendations;
+                showNextCard();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Get Recommendations';
             }
         });
 
-        async function sendFeedback(gameAndAppId, feedbackType, card, username) {
-            const response = await fetch('/feedback', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    appID: gameAndAppId.appID,
-                    feedback: feedbackType,
-                    username: username
-                })
+        function showNextCard() {
+            const container = document.getElementById('recommendations');
+            container.innerHTML = '';
+
+            if (recommendationQueue.length === 0) {
+                container.innerHTML = '<h2>No more recommendations. Click "Get Recommendations" for more.</h2>';
+                return;
+            }
+
+            const game = recommendationQueue.shift();
+            const card = createGameCard(game, currentUsername);
+            container.appendChild(card);
+        }
+
+        function createGameCard(game, username) {
+            const card = document.createElement('div');
+            card.className = 'recommendation-card';
+
+            // Header
+            const header = document.createElement('div');
+            header.className = 'card-header';
+            
+            const title = document.createElement('h3');
+            title.textContent = game.name;
+            
+            const price = document.createElement('span');
+            price.className = 'price-tag';
+            price.textContent = (game.price && game.price !== '0') ? `$${game.price}` : 'Free';
+            
+            header.append(title, price);
+
+            // Media
+            const mediaContainer = document.createElement('div');
+            mediaContainer.className = 'media-container';
+            
+            if (game.movieURLs && game.movieURLs.length > 0) {
+                const video = document.createElement('video');
+                video.src = game.movieURLs[0];
+                video.controls = true;
+                video.muted = true; 
+                mediaContainer.appendChild(video);
+            }
+            
+            if (game.screenshotURLs) {
+                game.screenshotURLs.forEach(url => {
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.loading = 'lazy';
+                    mediaContainer.appendChild(img);
+                });
+            }
+
+            // Tags
+            const tagsContainer = document.createElement('div');
+            tagsContainer.className = 'tags-container';
+            
+            const allTags = [...(game.genres || []), ...(game.categories || [])];
+            const uniqueTags = [...new Set(allTags)];
+            
+            uniqueTags.forEach(tag => {
+                const span = document.createElement('span');
+                span.className = 'tag';
+                span.textContent = tag;
+                tagsContainer.appendChild(span);
             });
 
-            if (response.ok) {
-                // alert(`Marked as ${feedbackType}: ${gameAndAppId.name}`);
-                removeCard(card);
-            } else {
-                const data = await response.json();
-                alert(`Error submitting feedback: ${data.error}`);
+            // Description
+            const desc = document.createElement('div');
+            desc.className = 'description';
+            desc.innerHTML = game.shortDescription || '';
+
+            // Detailed Description
+            let details;
+            if (game.detailedDescription) {
+                details = document.createElement('details');
+                const summary = document.createElement('summary');
+                summary.textContent = 'Read More';
+                const content = document.createElement('div');
+                content.innerHTML = game.detailedDescription;
+                details.append(summary, content);
             }
+
+            // Metadata
+            const metadata = document.createElement('div');
+            metadata.className = 'metadata';
+            
+            const reviews = document.createElement('span');
+            const pos = parseInt(game.positive) || 0;
+            const neg = parseInt(game.negative) || 0;
+            const totalReviews = pos + neg;
+            
+            let reviewText = 'No reviews';
+            if (totalReviews > 0) {
+                const pct = Math.round((pos / totalReviews) * 100);
+                reviewText = `${pct}% Positive (${totalReviews.toLocaleString()} reviews)`;
+            }
+            reviews.textContent = reviewText;
+            
+            const age = document.createElement('span');
+            age.textContent = (game.requiredAge && game.requiredAge !== '0') ? `Age: ${game.requiredAge}+` : '';
+
+            metadata.append(reviews, age);
+
+            // Feedback Buttons
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'feedback-div';
+
+            const wishlistBtn = document.createElement('button');
+            wishlistBtn.textContent = 'Wishlist';
+            wishlistBtn.className = 'feedback-button';
+            wishlistBtn.style.backgroundColor = '#2ecc71';
+            wishlistBtn.onclick = () => sendFeedback(game, 'wishlist', card, username);
+
+            const skipBtn = document.createElement('button');
+            skipBtn.textContent = 'Skip';
+            skipBtn.className = 'feedback-button';
+            skipBtn.style.backgroundColor = '#95a5a6';
+            skipBtn.onclick = () => sendFeedback(game, 'skip', card, username);
+
+            feedbackDiv.append(wishlistBtn, skipBtn);
+
+            // Assemble
+            card.append(header, mediaContainer, tagsContainer, desc);
+            if (details) card.append(details);
+            card.append(metadata, feedbackDiv);
+
+            return card;
         }
 
-        // Helper function which clears out all current recommendation cards
-        function clearRecommendations() {
-            const recommendationsDiv = document.getElementById('recommendations');
-            recommendationsDiv.innerHTML = '';
-            currentCards = [];
-        }
-
-
-        // Helper function which removes a specific card from the recommendations
-        function removeCard(card) {
-            const recommendationsDiv = document.getElementById('recommendations');
-            if (card.parentNode === recommendationsDiv) {
-                recommendationsDiv.removeChild(card);
+        async function sendFeedback(game, type, card, username) {
+            try {
+                const res = await fetch('/feedback', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        appID: game.appID,
+                        feedback: type,
+                        username: username
+                    })
+                });
+                
+                if (res.ok) {
+                    showNextCard();
+                } else {
+                    const d = await res.json();
+                    alert(d.error || 'Error submitting feedback');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Network error');
             }
-            currentCards = currentCards.filter(c => c !== card);
-            // If there are no more cards, show a message
-            if (currentCards.length === 0) {
-                recommendationsDiv.innerHTML = '<h2>No more recommendations. Click "Get Recommendations" for more.</h2>';
-            }
-        }
-
-
-        // Helper function which adds a specific card to the recommendations
-        function addCard(card) {
-            const recommendationsDiv = document.getElementById('recommendations');
-            recommendationsDiv.appendChild(card);
-            currentCards.push(card);
         }
     </script>
 </body>
