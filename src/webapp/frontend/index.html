@@ -3,131 +3,8 @@
 
 <head>
     <title>Game recommender</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
-            background-color: #f4f4f9;
-            color: #333;
-        }
-
-        h1 { color: #2c3e50; }
-
-        button {
-            background-color: #3498db;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            font-size: 16px;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-
-        button:hover { background-color: #2980b9; }
-
-        #recommendations {
-            margin-top: 20px;
-            text-align: left;
-        }
-
-        .recommendation-card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin: 20px 0;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-        }
-
-        .card-header h3 {
-            margin: 0;
-            color: #2c3e50;
-        }
-
-        .price-tag {
-            font-weight: bold;
-            color: #27ae60;
-            font-size: 1.1em;
-        }
-
-        .media-container {
-            display: flex;
-            gap: 10px;
-            overflow-x: auto;
-            padding-bottom: 10px;
-        }
-        
-        .media-container video, .media-container img {
-            height: 400px;
-            border-radius: 4px;
-            flex-shrink: 0;
-        }
-
-        .tags-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-        }
-
-        .tag {
-            background-color: #ecf0f1;
-            color: #7f8c8d;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 0.85em;
-        }
-
-        .description {
-            color: #555;
-            line-height: 1.5;
-        }
-
-        .metadata {
-            display: flex;
-            gap: 20px;
-            font-size: 0.9em;
-            color: #7f8c8d;
-        }
-
-        .feedback-div {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .feedback-button {
-            flex: 1;
-            padding: 10px;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        
-        details {
-            margin-top: 10px;
-            cursor: pointer;
-        }
-        
-        summary {
-            color: #3498db;
-            font-weight: bold;
-        }
-    </style>
+    <!-- We use index.css for style and index.js for scripts -->
+    <link rel="stylesheet" type="text/css" href="index.css">
 </head>
 
 <body>
@@ -136,194 +13,140 @@
     <button id="recommendButton">Get Recommendations</button>
     <div id="recommendations"></div>
 
-    <script>
-        let recommendationQueue = [];
-        let currentUsername = 'test';
+    <div id="autoWishlistTool">
+        <h2>Auto Wishlist Tool</h2>
+        <p>Configure scoring rules and automate wishlist or skip actions based on the calculated score.</p>
 
-        document.getElementById('recommendButton').addEventListener('click', async () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            currentUsername = urlParams.get('username') || 'test';
-            const btn = document.getElementById('recommendButton');
-            
-            btn.disabled = true;
-            btn.textContent = 'Loading...';
+        <div class="automation-controls">
+            <label>
+                Games to process
+                <input type="number" id="autoWishlistLimit" value="10" min="-1">
+            </label>
+            <button id="saveAutoWishlist">Save Configuration</button>
+            <button id="startAutoWishlist">Start Auto Wishlist</button>
+            <button id="stopAutoWishlist" disabled>Stop</button>
+        </div>
 
-            try {
-                const response = await fetch(`/recommend?username=${currentUsername}`);
-                const data = await response.json();
+        <div class="rule-grid">
+            <div class="rule-block" data-rule-type="genres" data-rule-kind="string">
+                <h3>Genre Contains</h3>
+                <div class="rule-inputs">
+                    <input type="text" placeholder="Genre" data-field="value">
+                    <input type="number" step="any" placeholder="Score" data-field="score">
+                    <button type="button" class="add-rule">Add</button>
+                </div>
+                <ul class="rule-list"></ul>
+            </div>
 
-                if (!response.ok) {
-                    throw new Error(data.error || 'Failed to fetch');
-                }
+            <div class="rule-block" data-rule-type="categories" data-rule-kind="string">
+                <h3>Category Contains</h3>
+                <div class="rule-inputs">
+                    <input type="text" placeholder="Category" data-field="value">
+                    <input type="number" step="any" placeholder="Score" data-field="score">
+                    <button type="button" class="add-rule">Add</button>
+                </div>
+                <ul class="rule-list"></ul>
+            </div>
 
-                if (!data.recommendations || data.recommendations.length === 0) {
-                    document.getElementById('recommendations').innerHTML = '<p>No recommendations found.</p>';
-                    return;
-                }
+            <div class="rule-block" data-rule-type="descriptionKeywords" data-rule-kind="string">
+                <h3>Description Contains</h3>
+                <div class="rule-inputs">
+                    <input type="text" placeholder="Keyword" data-field="value">
+                    <input type="number" step="any" placeholder="Score" data-field="score">
+                    <button type="button" class="add-rule">Add</button>
+                </div>
+                <ul class="rule-list"></ul>
+            </div>
 
-                recommendationQueue = data.recommendations;
-                showNextCard();
-            } catch (err) {
-                alert('Error: ' + err.message);
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Get Recommendations';
-            }
-        });
+            <div class="rule-block" data-rule-type="requiredAge" data-rule-kind="numeric">
+                <h3>Required Age</h3>
+                <div class="rule-inputs">
+                    <select data-field="comparison">
+                        <option value="lte">≤</option>
+                        <option value="lt">&lt;</option>
+                        <option value="eq">=</option>
+                        <option value="gte">≥</option>
+                        <option value="gt">&gt;</option>
+                    </select>
+                    <input type="number" step="any" placeholder="Value" data-field="value">
+                    <input type="number" step="any" placeholder="Score" data-field="score">
+                    <button type="button" class="add-rule">Add</button>
+                </div>
+                <ul class="rule-list"></ul>
+            </div>
 
-        function showNextCard() {
-            const container = document.getElementById('recommendations');
-            container.innerHTML = '';
+            <div class="rule-block" data-rule-type="price" data-rule-kind="numeric">
+                <h3>Price</h3>
+                <div class="rule-inputs">
+                    <select data-field="comparison">
+                        <option value="lte">≤</option>
+                        <option value="lt">&lt;</option>
+                        <option value="eq">=</option>
+                        <option value="gte">≥</option>
+                        <option value="gt">&gt;</option>
+                    </select>
+                    <input type="number" step="any" placeholder="Value" data-field="value">
+                    <input type="number" step="any" placeholder="Score" data-field="score">
+                    <button type="button" class="add-rule">Add</button>
+                </div>
+                <ul class="rule-list"></ul>
+            </div>
 
-            if (recommendationQueue.length === 0) {
-                container.innerHTML = '<h2>No more recommendations. Click "Get Recommendations" for more.</h2>';
-                return;
-            }
+            <div class="rule-block" data-rule-type="positive" data-rule-kind="numeric">
+                <h3>Positive Reviews</h3>
+                <div class="rule-inputs">
+                    <select data-field="comparison">
+                        <option value="gte">≥</option>
+                        <option value="gt">&gt;</option>
+                        <option value="eq">=</option>
+                        <option value="lte">≤</option>
+                        <option value="lt">&lt;</option>
+                    </select>
+                    <input type="number" step="any" placeholder="Value" data-field="value">
+                    <input type="number" step="any" placeholder="Score" data-field="score">
+                    <button type="button" class="add-rule">Add</button>
+                </div>
+                <ul class="rule-list"></ul>
+            </div>
 
-            const game = recommendationQueue.shift();
-            const card = createGameCard(game, currentUsername);
-            container.appendChild(card);
-        }
+            <div class="rule-block" data-rule-type="negative" data-rule-kind="numeric">
+                <h3>Negative Reviews</h3>
+                <div class="rule-inputs">
+                    <select data-field="comparison">
+                        <option value="lte">≤</option>
+                        <option value="lt">&lt;</option>
+                        <option value="eq">=</option>
+                        <option value="gte">≥</option>
+                        <option value="gt">&gt;</option>
+                    </select>
+                    <input type="number" step="any" placeholder="Value" data-field="value">
+                    <input type="number" step="any" placeholder="Score" data-field="score">
+                    <button type="button" class="add-rule">Add</button>
+                </div>
+                <ul class="rule-list"></ul>
+            </div>
 
-        function createGameCard(game, username) {
-            const card = document.createElement('div');
-            card.className = 'recommendation-card';
+            <div class="rule-block" data-rule-type="positiveRatio" data-rule-kind="numeric">
+                <h3>Positive Ratio</h3>
+                <div class="rule-inputs">
+                    <select data-field="comparison">
+                        <option value="gte">≥</option>
+                        <option value="gt">&gt;</option>
+                        <option value="eq">=</option>
+                        <option value="lte">≤</option>
+                        <option value="lt">&lt;</option>
+                    </select>
+                    <input type="number" step="any" placeholder="Value (0-1)" data-field="value">
+                    <input type="number" step="any" placeholder="Score" data-field="score">
+                    <button type="button" class="add-rule">Add</button>
+                </div>
+                <ul class="rule-list"></ul>
+            </div>
+        </div>
 
-            // Header
-            const header = document.createElement('div');
-            header.className = 'card-header';
-            
-            const title = document.createElement('h3');
-            title.textContent = game.name;
-            
-            const price = document.createElement('span');
-            price.className = 'price-tag';
-            price.textContent = (game.price && game.price !== '0') ? `$${game.price}` : 'Free';
-            
-            header.append(title, price);
-
-            // Media
-            const mediaContainer = document.createElement('div');
-            mediaContainer.className = 'media-container';
-            
-            if (game.movieURLs && game.movieURLs.length > 0) {
-                const video = document.createElement('video');
-                video.src = game.movieURLs[0];
-                video.controls = true;
-                video.muted = true; 
-                mediaContainer.appendChild(video);
-            }
-            
-            if (game.screenshotURLs) {
-                game.screenshotURLs.forEach(url => {
-                    const img = document.createElement('img');
-                    img.src = url;
-                    img.loading = 'lazy';
-                    mediaContainer.appendChild(img);
-                });
-            }
-
-            // Tags
-            const tagsContainer = document.createElement('div');
-            tagsContainer.className = 'tags-container';
-            
-            const allTags = [...(game.genres || []), ...(game.categories || [])];
-            const uniqueTags = [...new Set(allTags)];
-            
-            uniqueTags.forEach(tag => {
-                const span = document.createElement('span');
-                span.className = 'tag';
-                span.textContent = tag;
-                tagsContainer.appendChild(span);
-            });
-
-            // Description
-            const desc = document.createElement('div');
-            desc.className = 'description';
-            desc.innerHTML = game.shortDescription || '';
-
-            // Detailed Description
-            let details;
-            if (game.detailedDescription) {
-                details = document.createElement('details');
-                const summary = document.createElement('summary');
-                summary.textContent = 'Read More';
-                const content = document.createElement('div');
-                content.innerHTML = game.detailedDescription;
-                details.append(summary, content);
-            }
-
-            // Metadata
-            const metadata = document.createElement('div');
-            metadata.className = 'metadata';
-            
-            const reviews = document.createElement('span');
-            const pos = parseInt(game.positive) || 0;
-            const neg = parseInt(game.negative) || 0;
-            const totalReviews = pos + neg;
-            
-            let reviewText = 'No reviews';
-            if (totalReviews > 0) {
-                const pct = Math.round((pos / totalReviews) * 100);
-                reviewText = `${pct}% Positive (${totalReviews.toLocaleString()} reviews)`;
-            }
-            reviews.textContent = reviewText;
-            
-            const age = document.createElement('span');
-            age.textContent = (game.requiredAge && game.requiredAge !== '0') ? `Age: ${game.requiredAge}+` : '';
-
-            metadata.append(reviews, age);
-
-            // Feedback Buttons
-            const feedbackDiv = document.createElement('div');
-            feedbackDiv.className = 'feedback-div';
-
-            const wishlistBtn = document.createElement('button');
-            wishlistBtn.textContent = 'Wishlist';
-            wishlistBtn.className = 'feedback-button';
-            wishlistBtn.style.backgroundColor = '#2ecc71';
-            wishlistBtn.onclick = () => sendFeedback(game, 'wishlist', card, username);
-
-            const skipBtn = document.createElement('button');
-            skipBtn.textContent = 'Skip';
-            skipBtn.className = 'feedback-button';
-            skipBtn.style.backgroundColor = '#95a5a6';
-            skipBtn.onclick = () => sendFeedback(game, 'skip', card, username);
-
-            feedbackDiv.append(wishlistBtn, skipBtn);
-
-            // Assemble
-            card.append(header, mediaContainer, tagsContainer, desc);
-            if (details) card.append(details);
-            card.append(metadata, feedbackDiv);
-
-            return card;
-        }
-
-        async function sendFeedback(game, type, card, username) {
-            try {
-                const res = await fetch('/feedback', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        appID: game.appID,
-                        feedback: type,
-                        username: username
-                    })
-                });
-                
-                if (res.ok) {
-                    showNextCard();
-                } else {
-                    const d = await res.json();
-                    alert(d.error || 'Error submitting feedback');
-                }
-            } catch (e) {
-                console.error(e);
-                alert('Network error');
-            }
-        }
-    </script>
+        <div id="autoWishlistStatus"></div>
+    </div>
+    <script src="index.js"></script>
 </body>
 
 </html>

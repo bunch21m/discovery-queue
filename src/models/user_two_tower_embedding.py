@@ -1,7 +1,7 @@
 from src.db.user_functions import get_user_by_username
 from src.db.interaction_functions import get_users_interactions_from_database
-from src.db.game_functions import get_game_from_database
-from src.db.game_functions import load_all_games_from_database
+from src.db.tools.game_functions import get_game_from_database
+from src.db.tools.game_functions import load_all_games_from_database
 
 import numpy as np
 import pandas as pd

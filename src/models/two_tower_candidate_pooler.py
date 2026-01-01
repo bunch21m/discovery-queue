@@ -10,7 +10,7 @@ from psycopg2.extras import RealDictCursor
 from src.models.train_two_tower_model import TwoTowerModel
 from src.models.user_two_tower_embedding import compute_user_embedding, concat_user_features
 from src.ingest.initialize_game_embeddings import build_database_url
-from src.db.game_functions import get_game_from_database
+from src.db.tools.game_functions import get_game_from_database
 from src.db.user_functions import get_user_by_username
 from src.db.interaction_functions import get_users_interactions_from_database
 
@@ -83,7 +83,14 @@ class TwoTowerRecommender:
                 "1245620",  # Placeholder 9 (Elden Ring)
                 "413150",   # Placeholder 10 (Stardew Valley)
             ]
-            return self._fetch_cold_start_games(cold_start_app_ids)
+            cold_start_games = self._fetch_cold_start_games(cold_start_app_ids)
+
+            final_games = []
+            for app_id in cold_start_app_ids:
+                if app_id in cold_start_games:
+                    final_games.append(cold_start_games[app_id])
+
+            return final_games
 
         # 1. Compute User Embedding
         try:

@@ -8,7 +8,7 @@ NUM_RECOMMENDATIONS = 10
 # Initialize Two Tower Recommender
 recommender_object = Recommender("twoTower")
 
-app = Flask(__name__, template_folder='frontend')
+app = Flask(__name__, template_folder='frontend', static_folder='frontend', static_url_path='')
 
 # Route for the home page (in this case, locahost:5000/ or 127.0.0.1:5000)
 @app.route('/')
@@ -128,7 +128,25 @@ def submit_feedback():
     except Exception as e:
         print(f"Error handling feedback: {e}")
         return jsonify({"error": str(e)}), 500
+    
 
+# Route for recieving information used to set up the auto wishlist/skip tool
+@app.route('/auto_wishlist_config', methods=['POST'])
+def auto_wishlist_setup():
+    payload = request.get_json() or {}
+    username = payload.get('username', 'test')
+    # Currently not implemented
+    return None
+
+
+# Route for recieving information on whether the auto wishlist/skip tool would
+# wishlist or skip the game with the given appID
+@app.route('/auto_wishlist_decision', methods=['POST'])
+def auto_wishlist_decision():
+    payload = request.get_json() or {}
+    username = payload.get('username', 'test')
+    # Currently not implemented
+    return None
 
 # Run the application
 if __name__ == '__main__':

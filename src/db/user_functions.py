@@ -1,4 +1,4 @@
-from src.db.game_functions import read_secret
+from src.db.tools.game_functions import read_secret
 
 def get_all_users_from_database():
     """

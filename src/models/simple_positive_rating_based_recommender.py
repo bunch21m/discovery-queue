@@ -1,4 +1,4 @@
-from src.db.game_functions import load_all_games_from_database
+from src.db.tools.game_functions import load_all_games_from_database
 
 class SimplePositiveRatingBasedRecommender:
     """
