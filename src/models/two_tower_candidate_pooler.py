@@ -13,6 +13,7 @@ from src.ingest.initialize_game_embeddings import build_database_url
 from src.db.tools.game_functions import get_game_from_database
 from src.db.user_functions import get_user_by_username
 from src.db.interaction_functions import get_users_interactions_from_database
+from src.models.reranker import mmr_rerank
 
 class TwoTowerRecommender:
     def __init__(self, model_path='data/two_tower_model.pth'):
@@ -114,32 +115,40 @@ class TwoTowerRecommender:
             
             if not candidates:
                 return {}
+            
+            
+            
+            print(f"Top 10 candidates before rerank: {[list(candidates.keys())[i] for i in range(min(10, len(candidates)))]}")
+            # Rerank using MMR
+            mmr_reranked = mmr_rerank(list(candidates.values()), lambda_param=0.5, num_recommendations=k)
+            print(f"Top 10 candidates after rerank: {[mmr_reranked[i]['app_id'] for i in range(min(10, len(mmr_reranked)))]}")
                 
             # Hybrid Strategy: Top 5 Nearest + 5 Random from the rest
             # We assume k=10 usually. We'll split k roughly in half.
-            n_nearest = min(5, k)
-            n_random = k - n_nearest
             
-            # If total candidates are less than k, just return all
-            if len(candidates) <= k:
-                return candidates
+            # n_nearest = min(5, k)
+            # n_random = k - n_nearest
+            
+            # # If total candidates are less than k, just return all
+            # if len(candidates) <= k:
+            #     return candidates
                 
-            # 1. Top Nearest (Indices 0 to n_nearest-1)
-            final_indices = list(range(n_nearest))
+            # # 1. Top Nearest (Indices 0 to n_nearest-1)
+            # final_indices = list(range(n_nearest))
             
-            # 2. Random from the rest (Indices n_nearest to end)
-            remaining_indices = list(range(n_nearest, len(candidates)))
+            # # 2. Random from the rest (Indices n_nearest to end)
+            # remaining_indices = list(range(n_nearest, len(candidates)))
             
-            if n_random > 0 and remaining_indices:
-                 # Sample random indices from the remainder
-                 # Ensure we don't sample more than available
-                 n_to_sample = min(n_random, len(remaining_indices))
-                 random_indices = random.sample(remaining_indices, n_to_sample)
-                 final_indices.extend(random_indices)
+            # if n_random > 0 and remaining_indices:
+            #      # Sample random indices from the remainder
+            #      # Ensure we don't sample more than available
+            #      n_to_sample = min(n_random, len(remaining_indices))
+            #      random_indices = random.sample(remaining_indices, n_to_sample)
+            #      final_indices.extend(random_indices)
             
             # Construct final result
             final_games =  []
-            for idx in final_indices:
+            for idx in range(len(mmr_reranked)):
                 app_id = list(candidates.keys())[idx]
                 game_data = candidates[app_id]
                 final_games.append(game_data)
@@ -178,7 +187,7 @@ class TwoTowerRecommender:
                 
                 cur.execute(query, tuple(query_params))
                 rows = cur.fetchall()
-                results = [row['appid'] for row in rows]
+                results = [(row['appid'], row['distance']) for row in rows]
                 
         except Exception as e:
             print(f"DB Retrieval error: {e}")
@@ -203,9 +212,15 @@ class TwoTowerRecommender:
         
         data = {}
 
-        for app_id in app_ids:
+        for item in app_ids:
+            if isinstance(item, tuple):
+                app_id, distance = item
+            else:
+                app_id, distance = item, None
+            
             game = get_game_from_database(app_id)
             if game:
+                game['distance'] = distance
                 data[app_id] = game
                 
         return data
