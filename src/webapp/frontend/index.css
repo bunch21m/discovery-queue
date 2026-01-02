@@ -198,7 +198,28 @@ button:hover { background-color: #2980b9; }
     flex-shrink: 0;
 }
 
-.tags-container {
+.tags-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tag-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    text-align: left;
+}
+
+.tag-label {
+    font-weight: bold;
+    font-size: 0.9em;
+    color: #2c3e50;
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.tag-list {
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
@@ -210,6 +231,16 @@ button:hover { background-color: #2980b9; }
     padding: 2px 8px;
     border-radius: 12px;
     font-size: 0.85em;
+}
+
+.genre-tag {
+    background-color: #e8f6f3;
+    color: #16a085;
+}
+
+.category-tag {
+    background-color: #fef9e7;
+    color: #f39c12;
 }
 
 .description {

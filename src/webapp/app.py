@@ -2,6 +2,11 @@ from flask import Flask, render_template, jsonify, request
 from src.models.recommender import Recommender
 from src.db.user_functions import get_user_by_username
 from src.db.interaction_functions import add_user_interaction_to_database
+from src.db.tools.auto_wishlister import (
+    action_for_score,
+    score_app_id_for_user,
+    set_user_config,
+)
 
 NUM_RECOMMENDATIONS = 10
 
@@ -135,8 +140,14 @@ def submit_feedback():
 def auto_wishlist_setup():
     payload = request.get_json() or {}
     username = payload.get('username', 'test')
-    # Currently not implemented
-    return None
+    config = payload.get('config', {})
+
+    stored_config = set_user_config(username, config)
+
+    return jsonify({
+        "message": "Configuration saved",
+        "config": stored_config
+    }), 200
 
 
 # Route for recieving information on whether the auto wishlist/skip tool would
@@ -144,9 +155,25 @@ def auto_wishlist_setup():
 @app.route('/auto_wishlist_decision', methods=['POST'])
 def auto_wishlist_decision():
     payload = request.get_json() or {}
+    app_id = payload.get('appID') or payload.get('appId')
     username = payload.get('username', 'test')
-    # Currently not implemented
-    return None
+
+    if not app_id:
+        return jsonify({"error": "Missing appID"}), 400
+
+    try:
+        score = score_app_id_for_user(app_id, username)
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    action = action_for_score(score)
+    return jsonify({
+        "appID": app_id,
+        "score": score,
+        "action": action
+    }), 200
 
 # Run the application
 if __name__ == '__main__':
