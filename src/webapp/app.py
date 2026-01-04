@@ -11,7 +11,8 @@ from src.db.tools.auto_wishlister import (
 NUM_RECOMMENDATIONS = 10
 
 # Initialize Two Tower Recommender
-recommender_object = Recommender("twoTower")
+# recommender_object = Recommender("twoTower")
+recommender_object = Recommender("river")
 
 app = Flask(__name__, template_folder='frontend', static_folder='frontend', static_url_path='')
 

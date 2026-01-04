@@ -1,6 +1,7 @@
 from src.models.simple_positive_rating_based_recommender import SimplePositiveRatingBasedRecommender
 from src.models.simple_tag_vector_based_recommender import SimpleTagVectorBasedRecommender
 from src.models.two_tower_candidate_pooler import TwoTowerRecommender
+from src.models.river_recommender import RiverRecommender
 
 class Recommender:
     """
@@ -16,7 +17,8 @@ class Recommender:
     implemented_recommenders = {
         "simplePositiveRatingBased": SimplePositiveRatingBasedRecommender,
         "simpleTagVectorBased": SimpleTagVectorBasedRecommender,
-        "twoTower": TwoTowerRecommender
+        "twoTower": TwoTowerRecommender,
+        "river": RiverRecommender
     }
 
     def __init__(self, recommender_type: str, *args, **kwargs) -> None:
