@@ -65,7 +65,7 @@ def load_data_and_model():
     uw_weight = state_dict['user_tower.0.weight']
     saved_user_dim = uw_weight.shape[1]
     
-    print(f"Inferred dimensions from model file - User: {saved_user_dim}, Game: {saved_game_dim}")
+    print(f"Dimensions from model file - User: {saved_user_dim}, Game: {saved_game_dim}")
     
     if saved_game_dim != game_dim:
          print(f"WARNING: Computed game feature dim {game_dim} != Model expected {saved_game_dim}")
@@ -76,6 +76,45 @@ def load_data_and_model():
     model.eval()
     
     return games_df, game_features, model
+
+def generate_and_store_all_game_embeddings(model, games_df, game_features):
+    """
+    Generates embeddings for all games and stores them in the database.
+    """
+    # Generate Embeddings
+    print("Generating embeddings...")
+    game_tensor = torch.tensor(game_features, dtype=torch.float32)
+    with torch.no_grad():
+        embeddings = model.game_tower(game_tensor)
+        # Normalize
+        embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+    
+    embeddings_np = embeddings.numpy()
+    
+    db_url = build_database_url()
+    conn = psycopg2.connect(db_url)
+    
+    try:
+        with conn.cursor() as cur:
+            # Clear existing data before inserting new embeddings
+            cur.execute("TRUNCATE TABLE gameEmbeddings;")
+            
+            print("Inserting embeddings into DB...")
+            
+            values = []
+            for i, (app_id, row) in enumerate(games_df.iterrows()):
+                vec = embeddings_np[i].tolist()
+                values.append((str(app_id), vec))
+                
+            execute_values(cur, 
+                           "INSERT INTO gameEmbeddings (appid, embedding) VALUES %s", 
+                           values)
+            
+            conn.commit()
+            print(f"Stored {len(values)} embeddings.")
+            
+    finally:
+        conn.close()
 
 def store_embeddings():
     # Check if data exists first to avoid expensive computation

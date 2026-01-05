@@ -8,6 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 import os
 import sys
 import psycopg2
+from datetime import datetime
 
 from src.ingest.initialize_game_embeddings import build_database_url
 
@@ -58,6 +59,13 @@ class TwoTowerDataset(Dataset):
             torch.tensor(item['game_vector'], dtype=torch.float32),
             torch.tensor(item['label'], dtype=torch.float32)
         )
+
+def save_training_timestamp():
+    """Save the current timestamp as the last training time."""
+    timestamp_file = 'data/last_training_timestamp.txt'
+    current_timestamp = datetime.now().isoformat()
+    with open(timestamp_file, 'w') as f:
+        f.write(current_timestamp)
 
 def train_model():
     if os.path.exists('data/two_tower_model.pth'):
@@ -149,6 +157,10 @@ def train_model():
             torch.save(model.state_dict(), 'data/two_tower_model.pth')
 
     print("Training complete. Model saved to data/two_tower_model.pth")
+    
+    # Save training timestamp for incremental training
+    save_training_timestamp()
+    print("Training timestamp saved.")
     
     # Clear game embeddings table to ensure fresh embeddings are inserted
     print("Truncating gameEmbeddings table for fresh embeddings...")

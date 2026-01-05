@@ -13,7 +13,21 @@ NUM_RECOMMENDATIONS = 10
 # Initialize Two Tower Recommender
 recommender_object = Recommender("twoTower")
 
+from src.ingest.train_two_tower_on_new_interactions import train_on_new_interactions
+
 app = Flask(__name__, template_folder='frontend', static_folder='frontend', static_url_path='')
+
+@app.route('/train_model', methods=['POST'])
+def train_model():
+    """
+    Endpoint to trigger incremental training on new interactions.
+    """
+    try:
+        train_on_new_interactions()
+        return jsonify({"message": "Incremental training complete!"})
+    except Exception as e:
+        print(f"Error during training: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # Route for the home page (in this case, locahost:5000/ or 127.0.0.1:5000)
 @app.route('/')

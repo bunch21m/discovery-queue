@@ -2,6 +2,8 @@
 
 const recommendationContainer = document.getElementById('recommendations');
 const recommendButton = document.getElementById('recommendButton');
+const trainModelButton = document.getElementById('trainModelButton');
+const trainingStatus = document.getElementById('trainingStatus');
 // Save configuration
 const saveAutoButton = document.getElementById('saveAutoWishlist');
 const startAutoButton = document.getElementById('startAutoWishlist');
@@ -79,6 +81,35 @@ recommendButton.addEventListener('click', () => {
             }
             pendingRecommendationPromise = null;
         });
+});
+
+// Train model button event listener
+trainModelButton.addEventListener('click', async () => {
+    try {
+        trainModelButton.disabled = true;
+        trainModelButton.textContent = 'Training...';
+        trainingStatus.textContent = 'Starting model training...';
+        
+        const response = await fetch('/train_model', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            trainingStatus.textContent = data.message;
+        } else {
+            trainingStatus.textContent = `Error: ${data.error}`;
+            trainingStatus.style.color = 'red';
+        }
+    } catch (error) {
+        trainingStatus.textContent = `Error: ${error.message}`;
+        trainingStatus.style.color = 'red';
+    } finally {
+        trainModelButton.disabled = false;
+        trainModelButton.textContent = 'Train Model on New Interactions';
+    }
 });
 
 // We need to initialize the rule input handlers
