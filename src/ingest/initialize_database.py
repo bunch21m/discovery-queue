@@ -102,7 +102,10 @@ def load_data(conn, json_path='data/games.json'):
             return
         dataset = json.loads(text)
 
+    from psycopg2.extras import execute_values
+
     with conn.cursor() as cur:
+        values = []
         for app_id, game in dataset.items():
             name = game.get('name')
             positive = int(game.get('positive') or 0)
@@ -114,23 +117,24 @@ def load_data(conn, json_path='data/games.json'):
             if isinstance(genres, dict):
                 genres = list(genres.keys())
             price = float(game.get('price') or 0)
+            
+            values.append((str(app_id), name, positive, negative, tags, genres, price, Json(game)))
 
-            cur.execute(
-                """
-                INSERT INTO games (appid, name, positive, negative, tags, genres, price, data)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (appid) DO UPDATE SET
-                    name = EXCLUDED.name,
-                    positive = EXCLUDED.positive,
-                    negative = EXCLUDED.negative,
-                    tags = EXCLUDED.tags,
-                    genres = EXCLUDED.genres,
-                    price = EXCLUDED.price,
-                    data = EXCLUDED.data;
-                """,
-                (str(app_id), name, positive, negative, tags, genres, price, Json(game))
-            )
+        query = """
+            INSERT INTO games (appid, name, positive, negative, tags, genres, price, data)
+            VALUES %s
+            ON CONFLICT (appid) DO UPDATE SET
+                name = EXCLUDED.name,
+                positive = EXCLUDED.positive,
+                negative = EXCLUDED.negative,
+                tags = EXCLUDED.tags,
+                genres = EXCLUDED.genres,
+                price = EXCLUDED.price,
+                data = EXCLUDED.data;
+        """
+        execute_values(cur, query, values)
     conn.commit()
+
 
 def main():
     if not db_url:

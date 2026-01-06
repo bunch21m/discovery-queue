@@ -16,7 +16,11 @@ from src.models.train_two_tower_model import TwoTowerModel, TwoTowerDataset
 from src.models.user_two_tower_embedding import compute_user_embedding, prepare_genre_processors
 from src.ingest.create_game_embeddings import compute_game_features
 from src.ingest.initialize_game_embeddings import build_database_url
-from src.db.interaction_functions import get_all_interactions_after_timestamp_from_database, get_users_interactions_from_database
+from src.db.interaction_functions import (
+    get_all_interactions_after_timestamp_from_database, 
+    get_users_interactions_from_database,
+    get_interactions_for_users_from_database
+)
 from src.db.tools.game_functions import load_all_games_from_database
 from src.ingest.store_game_embeddings import generate_and_store_all_game_embeddings
 
@@ -98,10 +102,14 @@ def generate_pairs_from_new_interactions(last_timestamp):
     
     pairs = []
 
+    # Fetch ALL interactions for ALL relevant users in one go to avoid N queries
+    user_id_list = list(user_interactions.keys())
+    all_users_all_interactions = get_interactions_for_users_from_database(user_id_list)
+
     # Generate pairs for each user with new interactions
     for user_id, new_interactions in user_interactions.items():
-        # Get ALL interactions for this user to compute proper user embedding with multihot genres
-        all_interactions = get_users_interactions_from_database(user_id)
+        # Get ALL interactions for this user from the pre-fetched dict
+        all_interactions = all_users_all_interactions.get(user_id, {})
         all_interactions_df = pd.DataFrame.from_dict(all_interactions, orient='index')
 
         # Compute user embedding using ALL of this user's interactions
@@ -177,7 +185,7 @@ def train_on_new_interactions():
 
     criterion = nn.BCEWithLogitsLoss()
     # Lower learning rate for incremental training to avoid catastrophic forgetting
-    optimizer = optim.Adam(model.parameters(), lr=0.0001) 
+    optimizer = optim.Adam(model.parameters(), lr=0.00001) 
 
     epochs = 50
     best_val_loss = float('inf')

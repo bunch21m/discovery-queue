@@ -14,6 +14,24 @@ from sklearn.preprocessing import MultiLabelBinarizer
 ID_EMB_DIM = 16      # deterministic ID embedding size  
 GENRE_PROJ_DIM = 64  # projected dimension for genres
 # ---------------------------------------------
+# Global cache to avoid reloading massive game table every request
+_GAMES_CACHE = None
+_GENRE_PROCESSORS_CACHE = None
+
+def get_cached_game_data():
+    """Helper to lazily load and cache the entire games table."""
+    global _GAMES_CACHE, _GENRE_PROCESSORS_CACHE
+    if _GAMES_CACHE is None:
+        print("Loading games table into cache for embedding computation...")
+        games = load_all_games_from_database()
+        _GAMES_CACHE = pd.DataFrame.from_dict(games, orient='index')
+        _GAMES_CACHE['app_id'] = _GAMES_CACHE.index
+        
+        print("Pre-fitting genre processors for cache...")
+        _GENRE_PROCESSORS_CACHE = prepare_genre_processors(_GAMES_CACHE)
+        
+    return _GAMES_CACHE, _GENRE_PROCESSORS_CACHE
+
 
 
 def embed_user_id_deterministic(user_id_series):
@@ -173,15 +191,17 @@ def concat_user_features(username):
     interactions = get_users_interactions_from_database(user['userid'])
     interactions_df = pd.DataFrame.from_dict(interactions, orient='index')
     
-    # get all games to create multihot genre feature
-    games = load_all_games_from_database() 
-    games_df = pd.DataFrame.from_dict(games, orient='index')
-    games_df['app_id'] = games_df.index
+    # Use cached data to avoid loading 300MB+ of games on every request
+    games_df, (mlb, svd, genre_matrix_multi_hot) = get_cached_game_data()
     
-    # We pass None for svd/mlb so they are fitted on the fly as per original logic
-    # This might be inefficient for production (should load saved artifacts), 
-    # but maintains original behavior logic for now.
-    return compute_user_embedding(user['userid'], interactions_df, games_df)
+    return compute_user_embedding(
+        user['userid'], 
+        interactions_df, 
+        games_df, 
+        mlb=mlb, 
+        svd=svd, 
+        genre_matrix_multi_hot=genre_matrix_multi_hot
+    )
 
 def prepare_genre_processors(games_df):
     """

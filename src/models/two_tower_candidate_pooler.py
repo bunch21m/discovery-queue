@@ -1,6 +1,7 @@
 import random
 import os
 import sys
+import time
 import torch
 import psycopg2
 import pandas as pd
@@ -10,7 +11,7 @@ from psycopg2.extras import RealDictCursor
 from src.models.train_two_tower_model import TwoTowerModel
 from src.models.user_two_tower_embedding import compute_user_embedding, concat_user_features
 from src.ingest.initialize_game_embeddings import build_database_url
-from src.db.tools.game_functions import get_game_from_database
+from src.db.tools.game_functions import get_game_from_database, get_games_from_database
 from src.db.user_functions import get_user_by_username
 from src.db.interaction_functions import get_users_interactions_from_database
 from src.models.reranker import mmr_rerank
@@ -109,9 +110,13 @@ class TwoTowerRecommender:
             user_vec = user_embedding.numpy().flatten().tolist()
             
             # 2. ANN Retrieval from DB
-            # Exploration Strategy: Fetch 100 candidates to mix relevance and diversity
-            pool_size = 100
+            # Pool size to determine how many candidates to fetch
+            
+            print("Retrieving nearest neighbors...")
+            pool_size = 10000
+            start_time = time.perf_counter()
             candidates = self._retrieve_nearest_neighbors(user_vec, pool_size, exclude_app_ids=seen_app_ids)
+            print(f"Time it took to retrieve {pool_size} candidates: {time.perf_counter() - start_time:.2f} seconds")
             
             if not candidates:
                 return {}
@@ -119,8 +124,10 @@ class TwoTowerRecommender:
             
             
             print(f"Top 10 candidates before rerank: {[list(candidates.keys())[i] for i in range(min(10, len(candidates)))]}")
-            # Rerank using MMR
-            mmr_reranked = mmr_rerank(list(candidates.values()), lambda_param=0.5, num_recommendations=k)
+            # Rerank using MMR - only rerank top 200 to keep it fast
+            candidate_list = list(candidates.values())
+            mmr_pool = candidate_list[:200]
+            mmr_reranked = mmr_rerank(mmr_pool, lambda_param=0.5, num_recommendations=k)
             print(f"Top 10 candidates after rerank: {[mmr_reranked[i]['app_id'] for i in range(min(10, len(mmr_reranked)))]}")
                 
             # Hybrid Strategy: Top 5 Nearest + 5 Random from the rest
@@ -208,22 +215,27 @@ class TwoTowerRecommender:
         
         return games_data
 
-    def _fetch_game_details(self, app_ids):
-        
-        data = {}
-
-        for item in app_ids:
+    def _fetch_game_details(self, app_ids_with_distances):
+        """
+        Fetches game details in batch.
+        """
+        app_ids = []
+        distances = {}
+        for item in app_ids_with_distances:
             if isinstance(item, tuple):
-                app_id, distance = item
+                aid, dist = item
             else:
-                app_id, distance = item, None
+                aid, dist = item, None
+            app_ids.append(aid)
+            distances[aid] = dist
             
-            game = get_game_from_database(app_id)
-            if game:
-                game['distance'] = distance
-                data[app_id] = game
+        games_data = get_games_from_database(app_ids)
+        
+        # Add the distance back to the objects
+        for aid, game in games_data.items():
+            game['distance'] = distances.get(aid)
                 
-        return data
+        return games_data
 
     def _fetch_cold_start_games(self, app_ids):
         """

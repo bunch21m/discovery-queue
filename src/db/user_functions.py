@@ -60,7 +60,7 @@ def get_user_by_username(username):
 
         conn = psycopg2.connect(db_url)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(f"SELECT * FROM users WHERE username = '{username}';")
+            cur.execute("SELECT * FROM users WHERE username = %s;", (username,))
             rows = cur.fetchall()
             for row in rows:
                 user_data = row

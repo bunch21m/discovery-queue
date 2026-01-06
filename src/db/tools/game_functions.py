@@ -86,7 +86,7 @@ def get_game_from_database(app_id):
 
         conn = psycopg2.connect(db_url)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(f"SELECT * FROM games WHERE appid = '{app_id}';")
+            cur.execute("SELECT * FROM games WHERE appid = %s;", (app_id,))
             # game_data = cur.fetchone()
             row = cur.fetchone()
             if row:
@@ -109,3 +109,57 @@ def get_game_from_database(app_id):
         raise RuntimeError(f"Database error: {e}")
 
     return game_data
+def get_games_from_database(app_ids):
+    """
+    Loads multiple games by app_ids from the PostgreSQL database in a single query.
+
+    Args:
+            app_ids (list): A list of app_ids to fetch.
+    Returns:
+            dict: A dictionary of app_id -> game_data.
+    """
+    if not app_ids:
+        return {}
+        
+    user = read_secret('/run/secrets/postgres_user')
+    password = read_secret('/run/secrets/postgres_password')
+    db_name = read_secret('/run/secrets/postgres_db')
+    
+    if not (user and password and db_name):
+        raise RuntimeError("Database credentials not found")
+
+    db_url = f"postgresql://{user}:{password}@db:5432/{db_name}"
+    results = {}
+
+    try:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+
+        conn = psycopg2.connect(db_url)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # We use tuple(app_ids) for the IN clause
+            query = "SELECT * FROM games WHERE appid IN %s;"
+            cur.execute(query, (tuple(app_ids),))
+            rows = cur.fetchall()
+            
+            for row in rows:
+                game_data = {
+                    'name': row.get('name'),
+                    'positive': int(row.get('positive') or 0),
+                    'negative': int(row.get('negative') or 0),
+                    'tags': row.get('tags') or [],
+                    'genres': row.get('genres') or [],
+                    'price': float(row.get('price') or 0)
+                }
+                if row.get('data'):
+                    game_data.update(row.get('data'))
+                
+                aid = str(row.get('appid'))
+                game_data['app_id'] = aid
+                results[aid] = game_data
+                
+        conn.close()
+    except Exception as e:
+        print(f"Database error in batch fetch: {e}")
+
+    return results

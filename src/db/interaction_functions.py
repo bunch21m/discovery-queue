@@ -25,7 +25,7 @@ def get_latest_user_interaction_from_database(user_id):
 
         conn = psycopg2.connect(db_url)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(f"SELECT * FROM interactions WHERE userid = {user_id} ORDER BY timestamp DESC LIMIT 1;")
+            cur.execute("SELECT * FROM interactions WHERE userid = %s ORDER BY timestamp DESC LIMIT 1;", (user_id,))
             row = cur.fetchone()
             if row:
                 interaction = row
@@ -60,7 +60,7 @@ def get_users_interactions_from_database(user_id):
 
         conn = psycopg2.connect(db_url)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(f"SELECT * FROM interactions WHERE userid = {user_id};")
+            cur.execute("SELECT * FROM interactions WHERE userid = %s;", (user_id,))
             rows = cur.fetchall()
             for row in rows:
                 interaction_id = row['interactionid']
@@ -179,5 +179,44 @@ def get_all_interactions_after_timestamp_from_database(timestamp):
         conn.close()
     except Exception as e:
         raise RuntimeError(f"Database error: {e}")
+
+    return dataset
+
+
+def get_interactions_for_users_from_database(user_ids):
+    """
+    Loads all interactions for a list of users in a single query.
+    """
+    if not user_ids:
+        return {}
+        
+    user = read_secret('/run/secrets/postgres_user')
+    password = read_secret('/run/secrets/postgres_password')
+    db_name = read_secret('/run/secrets/postgres_db')
+    
+    if not (user and password and db_name):
+        raise RuntimeError("Database credentials not found")
+
+    db_url = f"postgresql://{user}:{password}@db:5432/{db_name}"
+    dataset = {}
+
+    try:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+
+        conn = psycopg2.connect(db_url)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM interactions WHERE userid IN %s;", (tuple(user_ids),))
+            rows = cur.fetchall()
+            for row in rows:
+                user_id = row['userid']
+                if user_id not in dataset:
+                    dataset[user_id] = {}
+                interaction_id = row['interactionid']
+                dataset[user_id][interaction_id] = row
+            
+        conn.close()
+    except Exception as e:
+        print(f"Database error in batch interaction fetch: {e}")
 
     return dataset
