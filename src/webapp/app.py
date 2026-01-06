@@ -11,7 +11,8 @@ from src.db.tools.auto_wishlister import (
 NUM_RECOMMENDATIONS = 10
 
 # Initialize Two Tower Recommender
-recommender_object = Recommender("twoTower")
+# recommender_object = Recommender("twoTower")
+recommender_object = Recommender("river")
 
 from src.ingest.train_two_tower_on_new_interactions import train_on_new_interactions
 
