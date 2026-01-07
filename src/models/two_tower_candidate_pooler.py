@@ -14,7 +14,7 @@ from src.ingest.initialize_game_embeddings import build_database_url
 from src.db.tools.game_functions import get_game_from_database, get_games_from_database
 from src.db.user_functions import get_user_by_username
 from src.db.interaction_functions import get_users_interactions_from_database
-from src.models.reranker import mmr_rerank
+from src.models.reranker import mmr_rerank, get_intralist_diversity
 
 class TwoTowerRecommender:
     def __init__(self, model_path='data/two_tower_model.pth'):
@@ -116,7 +116,7 @@ class TwoTowerRecommender:
             pool_size = 10000
             start_time = time.perf_counter()
             candidates = self._retrieve_nearest_neighbors(user_vec, pool_size, exclude_app_ids=seen_app_ids)
-            print(f"Time it took to retrieve {pool_size} candidates: {time.perf_counter() - start_time:.2f} seconds")
+            print(f"Time it took to retrieve {len(candidates)} candidates: {time.perf_counter() - start_time:.2f} seconds")
             
             if not candidates:
                 return {}
@@ -124,11 +124,14 @@ class TwoTowerRecommender:
             
             
             print(f"Top 10 candidates before rerank: {[list(candidates.keys())[i] for i in range(min(10, len(candidates)))]}")
-            # Rerank using MMR - only rerank top 200 to keep it fast
+            original_top10 = list(candidates.values())[:10]
+            print(f"Intralist diversity before rerank: {get_intralist_diversity(original_top10)}")
+            # Rerank using MMR - only rerank top 100 to keep it fast
             candidate_list = list(candidates.values())
-            mmr_pool = candidate_list[:200]
+            mmr_pool = candidate_list[:100]
             mmr_reranked = mmr_rerank(mmr_pool, lambda_param=0.5, num_recommendations=k)
             print(f"Top 10 candidates after rerank: {[mmr_reranked[i]['app_id'] for i in range(min(10, len(mmr_reranked)))]}")
+            print(f"Intralist diversity after rerank: {get_intralist_diversity(mmr_reranked)}")
                 
             # Hybrid Strategy: Top 5 Nearest + 5 Random from the rest
             # We assume k=10 usually. We'll split k roughly in half.
@@ -217,7 +220,7 @@ class TwoTowerRecommender:
 
     def _fetch_game_details(self, app_ids_with_distances):
         """
-        Fetches game details in batch.
+        Fetches game details in batch, preserving original order.
         """
         app_ids = []
         distances = {}
@@ -229,11 +232,15 @@ class TwoTowerRecommender:
             app_ids.append(aid)
             distances[aid] = dist
             
-        games_data = get_games_from_database(app_ids)
+        games_data_unordered = get_games_from_database(app_ids)
         
-        # Add the distance back to the objects
-        for aid, game in games_data.items():
-            game['distance'] = distances.get(aid)
+        # Build ordered dict preserving the original distance-sorted order
+        games_data = {}
+        for aid in app_ids:
+            if aid in games_data_unordered:
+                game = games_data_unordered[aid]
+                game['distance'] = distances.get(aid)
+                games_data[aid] = game
                 
         return games_data
 
