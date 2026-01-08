@@ -11,10 +11,11 @@ from psycopg2.extras import RealDictCursor
 from src.models.train_two_tower_model import TwoTowerModel
 from src.models.user_two_tower_embedding import compute_user_embedding, concat_user_features
 from src.ingest.initialize_game_embeddings import build_database_url
-from src.db.tools.game_functions import get_game_from_database, get_games_from_database
+from src.db.tools.game_functions import get_game_from_database, get_games_from_database, load_all_games_from_database
 from src.db.user_functions import get_user_by_username
 from src.db.interaction_functions import get_users_interactions_from_database
 from src.models.reranker import mmr_rerank, get_intralist_diversity
+from src.models.lightgbm_lambdamart import get_top_k_recommendations
 
 class TwoTowerRecommender:
     def __init__(self, model_path='data/two_tower_model.pth'):
@@ -121,17 +122,68 @@ class TwoTowerRecommender:
             if not candidates:
                 return {}
             
+            print(f"Top 10 candidates from two-tower: {[list(candidates.keys())[i] for i in range(min(10, len(candidates)))]}")
             
+            # LambdaMART scoring
+            # Score top candidates using LambdaMART
+            lambdamart_model_path = 'data/lambdamart_model.txt'
+            if os.path.exists(lambdamart_model_path):
+                print("Applying LambdaMART scoring...")
+                start_time = time.perf_counter()
+                
+                # Use cached data to avoid loading 300MB+ of games on every request
+                from src.models.user_two_tower_embedding import get_cached_game_data
+                games_df, _ = get_cached_game_data()
+                
+                # Get user interactions for feature computation
+                interactions = get_users_interactions_from_database(user_id)
+                interactions_df = pd.DataFrame.from_dict(interactions, orient='index')
+                if 'appid' in interactions_df.columns:
+                    interactions_df = interactions_df.rename(columns={'appid': 'app_id'})
+                
+                # Get top K from two-tower as candidates for LambdaMART
+                candidate_app_ids = list(candidates.keys())[:1000]
+                
+                # Score with LambdaMART - get top 100 for MMR   
+                lambdamart_results = get_top_k_recommendations(
+                    user_id=user_id,
+                    interactions_df=interactions_df,
+                    games_df=games_df,
+                    candidate_app_ids=candidate_app_ids,
+                    k=100,
+                    model_path=lambdamart_model_path
+                )
+                
+                print(f"LambdaMART scoring took {time.perf_counter() - start_time:.2f} seconds")
+                
+                # Reorder candidates dict based on LambdaMART scores
+                if lambdamart_results:
+                    reordered_candidates = {}
+                    for app_id, score in lambdamart_results:
+                        if app_id in candidates:
+                            candidates[app_id]['lambdamart_score'] = score
+                            reordered_candidates[app_id] = candidates[app_id]
+                    
+                    # Add remaining candidates that weren't in LambdaMART results
+                    for app_id in candidates:
+                        if app_id not in reordered_candidates:
+                            reordered_candidates[app_id] = candidates[app_id]
+                    
+                    candidates = reordered_candidates
+                    print(f"Top 10 after LambdaMART: {list(candidates.keys())[:10]}")
+            else:
+                print(f"LambdaMART model not found at {lambdamart_model_path}, skipping LambdaMART scoring")
             
-            print(f"Top 10 candidates before rerank: {[list(candidates.keys())[i] for i in range(min(10, len(candidates)))]}")
+            # === MMR Diversity Reranking ===
             original_top10 = list(candidates.values())[:10]
-            print(f"Intralist diversity before rerank: {get_intralist_diversity(original_top10)}")
+            print(f"Intralist diversity before MMR: {get_intralist_diversity(original_top10)}")
+            
             # Rerank using MMR - only rerank top 100 to keep it fast
             candidate_list = list(candidates.values())
             mmr_pool = candidate_list[:100]
-            mmr_reranked = mmr_rerank(mmr_pool, lambda_param=0.5, num_recommendations=k)
-            print(f"Top 10 candidates after rerank: {[mmr_reranked[i]['app_id'] for i in range(min(10, len(mmr_reranked)))]}")
-            print(f"Intralist diversity after rerank: {get_intralist_diversity(mmr_reranked)}")
+            mmr_reranked = mmr_rerank(mmr_pool, lambda_param=0.3, num_recommendations=k)
+            print(f"Top 10 candidates after MMR: {[mmr_reranked[i]['app_id'] for i in range(min(10, len(mmr_reranked)))]}")
+            print(f"Intralist diversity after MMR: {get_intralist_diversity(mmr_reranked)}")
                 
             # Hybrid Strategy: Top 5 Nearest + 5 Random from the rest
             # We assume k=10 usually. We'll split k roughly in half.
@@ -156,14 +208,7 @@ class TwoTowerRecommender:
             #      random_indices = random.sample(remaining_indices, n_to_sample)
             #      final_indices.extend(random_indices)
             
-            # Construct final result
-            final_games =  []
-            for idx in range(len(mmr_reranked)):
-                app_id = list(candidates.keys())[idx]
-                game_data = candidates[app_id]
-                final_games.append(game_data)
-            
-            return final_games
+            return mmr_reranked
             
         except Exception as e:
             print(f"Error generating recommendations: {e}")

@@ -57,37 +57,75 @@ def get_cosine_distance(cur, app_id_1, app_id_2):
     return distance
 
 
+def calculate_genre_similarity(genres1, genres2):
+    """
+    Computes Jaccard similarity between two lists of genres.
+    """
+    if not genres1 or not genres2:
+        return 0.0
+    set1 = set(genres1)
+    set2 = set(genres2)
+    intersection = set1.intersection(set2)
+    union = set1.union(set2)
+    return len(intersection) / len(union) if union else 0.0
+
+
 # Implements a simple MMR (Maximal Marginal Relevance) reranking algorithm
-def mmr_rerank(recommendations, lambda_param=0.5, num_recommendations=10):
+def mmr_rerank(recommendations, lambda_param=0.3, num_recommendations=10):
     """
     Reranks the given recommendations using the MMR algorithm.
     """
     if not recommendations:
         return []
     
-    selected = [recommendations[0]]  # Start with the top recommendation
-    remaining = recommendations[1:]  # Remaining candidates
+    # 1. Extract raw relevance scores
+    raw_relevances = []
+    for r in recommendations:
+        if 'lambdamart_score' in r:
+            raw_relevances.append(r['lambdamart_score'])
+        else:
+            # Fallback to (1 - distance) if no LambdaMART score
+            raw_relevances.append(1 - r.get('distance', 1.0))
+    
+    # 2. Normalize relevance scores to [0, 1] for balanced MMR
+    min_rel = min(raw_relevances)
+    max_rel = max(raw_relevances)
+    rel_range = max_rel - min_rel if max_rel > min_rel else 1.0
+    
+    for i, r in enumerate(recommendations):
+        r['_mmr_relevance'] = (raw_relevances[i] - min_rel) / rel_range
+
+    selected = [recommendations[0]]  # Start with the most relevant
+    remaining = recommendations[1:]
     
     db_url = build_database_url()
     conn = psycopg2.connect(db_url)
     
     try:
         with conn.cursor() as cur:
-            # add next best recommendation based on MMR
             while len(selected) < num_recommendations and remaining:
                 mmr_scores = {}
                 
                 for candidate in remaining:
-                    # Relevance: higher for lower distance (more similar to user)
-                    # We convert distance to similarity: 1 - distance (<=> is cosine distance)
-                    relevance = 1 - candidate['distance']
+                    relevance = candidate['_mmr_relevance']
                     
-                    # Max similarity to already selected items
-                    # We reuse the cursor 'cur' to avoid re-connecting
-                    # Convert distance to similarity for MMR: 1 - distance
-                    max_sim = max([1 - get_cosine_distance(cur, candidate['app_id'], s['app_id']) for s in selected]) if selected else 0
+                    # Compute max similarity to selected items
+                    # COMBINE: 1. Embedding Similarity + 2. Explicit Genre Overlap
+                    similarities = []
+                    for s in selected:
+                        # a. Embedding-based similarity
+                        emb_sim = 1 - get_cosine_distance(cur, candidate['app_id'], s['app_id'])
+                        
+                        # b. Explicit Genre Overlap (Jaccard)
+                        genre_sim = calculate_genre_similarity(candidate.get('genres', []), s.get('genres', []))
+                        
+                        # Weight both - genre similarity is much more "interpretable" for the user
+                        combined_sim = 0.5 * emb_sim + 0.5 * genre_sim
+                        similarities.append(combined_sim)
                     
-                    # MMR score: balance relevance vs diversity
+                    max_sim = max(similarities)
+                    
+                    # MMR score
                     mmr_score = lambda_param * relevance - (1 - lambda_param) * max_sim
                     mmr_scores[candidate['app_id']] = (mmr_score, candidate)
                     

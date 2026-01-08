@@ -45,7 +45,7 @@ services:
     ports:
       - "5000:5000"
     command: >
-      bash -c "python -m src.ingest.initialize_database && python -m src.ingest.initialize_game_embeddings && python -m src.ingest.generate_training_pairs && python -m src.models.train_two_tower_model && python -m src.ingest.store_game_embeddings && python -m src.webapp.app"
+      bash -c "python -m src.ingest.initialize_database && python -m src.ingest.initialize_game_embeddings && python -m src.ingest.generate_training_pairs && python -m src.models.train_two_tower_model && python -m src.ingest.store_game_embeddings && python -m src.ingest.train_lightgbm_lambdamart && python -m src.webapp.app"
 
 volumes:
   db_data:

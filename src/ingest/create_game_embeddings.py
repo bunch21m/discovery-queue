@@ -29,7 +29,7 @@ def embed_app_id_deterministic(app_id_series):
 
 
 
-def compute_game_features(df):
+def compute_game_features(df, mlb=None, svd=None):
     """
     Computes game embedding features from a DataFrame.
     Returns:
@@ -39,19 +39,25 @@ def compute_game_features(df):
     id_features = embed_app_id_deterministic(df['app_id'])
 
     # 3. Genre Processing (Multi-Hot + SVD)
-    mlb = MultiLabelBinarizer(sparse_output=False)
     # Handle missing genres
     genres = df['genres'].apply(lambda x: x if isinstance(x, list) else [])
     
-    genre_matrix_multi_hot = mlb.fit_transform(genres)
-
-    # Apply dimensionality reduction globally
-    actual_dim = min(GENRE_PROJ_DIM, genre_matrix_multi_hot.shape[1] - 1)
-    if actual_dim > 0:
-        svd = TruncatedSVD(n_components=actual_dim, random_state=42)
-        genre_features = svd.fit_transform(genre_matrix_multi_hot)
+    if mlb is None:
+        mlb = MultiLabelBinarizer(sparse_output=False)
+        genre_matrix_multi_hot = mlb.fit_transform(genres)
     else:
-        genre_features = genre_matrix_multi_hot
+        genre_matrix_multi_hot = mlb.transform(genres)
+
+    if svd is None:
+        # Apply dimensionality reduction globally
+        actual_dim = min(GENRE_PROJ_DIM, genre_matrix_multi_hot.shape[1] - 1)
+        if actual_dim > 0:
+            svd = TruncatedSVD(n_components=actual_dim, random_state=42)
+            genre_features = svd.fit_transform(genre_matrix_multi_hot)
+        else:
+            genre_features = genre_matrix_multi_hot
+    else:
+        genre_features = svd.transform(genre_matrix_multi_hot)
 
     # 4. Price Bucketing (Vectorized)
     # Map: 0 -> 0, <10 -> 1, <30 -> 2, >=30 -> 3

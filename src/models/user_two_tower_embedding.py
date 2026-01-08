@@ -127,11 +127,14 @@ def compute_user_embedding(user_id, interactions_df, games_df, svd=None, mlb=Non
 
     # Apply same dimensionality transformation to user genre preferences
     if user_genres.sum() > 0 and actual_dim > 0:
+        # Normalize the vector so 100 action games isn't 100x stronger than 1 action game
+        # We want the direction of the preference, not just the magnitude
+        normalized_user_genres = user_genres / (user_genres.sum() + 1e-9)
+        
         if svd:
-             user_genre_embedding = svd.transform(user_genres.reshape(1, -1)).flatten()
+             user_genre_embedding = svd.transform(normalized_user_genres.reshape(1, -1)).flatten()
         else:
-             # Should not happen if logic flows correctly
-             user_genre_embedding = user_genres
+             user_genre_embedding = normalized_user_genres
     else:
         user_genre_embedding = np.zeros(actual_dim if actual_dim > 0 else genre_matrix_multi_hot.shape[1])
 
