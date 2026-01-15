@@ -3,42 +3,19 @@ from src.db.tools.game_functions import load_all_games_from_database
 
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import TruncatedSVD
 from sklearn.preprocessing import MultiLabelBinarizer
-import hashlib
 
-# -------- Configurable hyperparameters --------
-ID_EMB_DIM = 16      # deterministic ID embedding size  
-GENRE_PROJ_DIM = 64  # projected dimension for genres
-# ---------------------------------------------
+# ID embeddings removed - they were fixed hashes that added noise without learning
+# Now features are: genre (~30), price (4), popularity (1), rating (1), rating_buckets (5)
 
 
-def embed_app_id_deterministic(app_id_series):
-    """Vectorized hashing of AppIDs to deterministic floats."""
-    def hash_id(aid):
-        hash_bytes = hashlib.md5(str(aid).encode('utf-8')).digest()
-        # Convert first N bytes to floats and normalize
-        ints = np.frombuffer(hash_bytes, dtype=np.uint8)[:ID_EMB_DIM]
-        vec = ints.astype(np.float32)
-        norm = np.linalg.norm(vec)
-        return vec / (norm + 1e-9)
-    
-    return np.stack(app_id_series.apply(hash_id).values)
-
-
-
-
-
-def compute_game_features(df, mlb=None, svd=None):
+def compute_game_features(df, mlb=None):
     """
     Computes game embedding features from a DataFrame.
     Returns:
         np.ndarray: Matrix of features (N_games, Dim).
     """
-    # 2. ID Embeddings (Static Hashing)
-    id_features = embed_app_id_deterministic(df['app_id'])
-
-    # 3. Genre Processing (Multi-Hot + SVD)
+    # 1. Genre Processing (L1-Normalized Multi-Hot)
     # Handle missing genres
     genres = df['genres'].apply(lambda x: x if isinstance(x, list) else [])
     
@@ -48,16 +25,10 @@ def compute_game_features(df, mlb=None, svd=None):
     else:
         genre_matrix_multi_hot = mlb.transform(genres)
 
-    if svd is None:
-        # Apply dimensionality reduction globally
-        actual_dim = min(GENRE_PROJ_DIM, genre_matrix_multi_hot.shape[1] - 1)
-        if actual_dim > 0:
-            svd = TruncatedSVD(n_components=actual_dim, random_state=42)
-            genre_features = svd.fit_transform(genre_matrix_multi_hot)
-        else:
-            genre_features = genre_matrix_multi_hot
-    else:
-        genre_features = svd.transform(genre_matrix_multi_hot)
+    # L1-normalize genre vectors so they sum to 1.0
+    # This matches the user embedding normalization and ensures compatible scales
+    row_sums = genre_matrix_multi_hot.sum(axis=1, keepdims=True) + 1e-9
+    genre_features = genre_matrix_multi_hot / row_sums
 
     # 4. Price Bucketing (Vectorized)
     # Map: 0 -> 0, <10 -> 1, <30 -> 2, >=30 -> 3
@@ -81,6 +52,21 @@ def compute_game_features(df, mlb=None, svd=None):
     
     pop_features = np.log1p(positive_counts) / 15.0
     pop_features = pop_features.reshape(-1, 1)
+    
+    # 5b. Popularity Bucket (One-hot) - matches user pop_bucket_prefs
+    # Buckets: niche (<1k), moderate (1k-10k), popular (10k-100k), mega-popular (100k+)
+    pop_buckets = np.zeros(len(df), dtype=np.int32)
+    for i in range(len(df)):
+        p = positive_counts[i]
+        if p < 1000:
+            pop_buckets[i] = 0  # niche
+        elif p < 10000:
+            pop_buckets[i] = 1  # moderate
+        elif p < 100000:
+            pop_buckets[i] = 2  # popular
+        else:
+            pop_buckets[i] = 3  # mega-popular
+    pop_bucket_features = np.eye(4)[pop_buckets].astype(np.float32)
     
     # 6. Rating Ratio Feature (Quality Signal)
     # Range: 0.0 to 1.0
@@ -111,18 +97,20 @@ def compute_game_features(df, mlb=None, svd=None):
     
     rating_bucket_features = np.eye(5)[rating_buckets].astype(np.float32)
 
-    # 8. Combine All Features
-    # Shape: (N_Games, ID_DIM + GENRE_DIM + PRICE_DIM + 1 + 5)
-    # ID features = deterministic hash embeddings
-    # genre_features = SVD projected multi-hot genres
-    # price_features = one-hot price buckets
-    # pop_features = log(positive_count) for popularity signal
-    # rating_bucket_features = quality signal (Steam-style categories)
+    # Combine All Features
+    # Shape: (N_Games, GENRE_DIM + PRICE_DIM + POP_BUCKET + 1 + 1 + 5) = ~45 dims
+    # genre_features = L1-normalized multi-hot genres (~30 dims)
+    # price_features = one-hot price buckets (4 dims)
+    # pop_bucket_features = one-hot popularity bucket (4 dims)
+    # pop_features = log(positive_count) for popularity signal (1 dim)
+    # rating_ratio = continuous quality signal 0.0 to 1.0 (1 dim)
+    # rating_bucket_features = Steam-style quality categories (5 dims)
     final_item_vectors = np.concatenate([
-        id_features, 
         genre_features, 
         price_features, 
-        pop_features, 
+        pop_bucket_features,
+        pop_features,
+        rating_ratio,
         rating_bucket_features
     ], axis=1).astype(np.float32)
 

@@ -38,8 +38,9 @@ def wait_for_db(db_url, retries=20, delay=1.0):
     return False
 
 
-def initialize_game_embeddings(db_url, dim=30):
-    """Create the pgvector extension and gameEmbeddings table if they do not exist."""
+def initialize_game_embeddings(db_url, dim=128):
+    """Create the pgvector extension and gameEmbeddings table if they do not exist.
+    If table exists with different dimension, drop and recreate it."""
     if not db_url:
         raise RuntimeError("DATABASE_URL not provided")
 
@@ -48,19 +49,48 @@ def initialize_game_embeddings(db_url, dim=30):
         with conn.cursor() as cur:
             # Ensure pgvector extension exists
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-            # Create gameEmbeddings table with vector column of given dimension
-
-            cur.execute(
-                f"""
-                CREATE TABLE IF NOT EXISTS gameEmbeddings (
-                    id bigserial PRIMARY KEY,
-                    appid VARCHAR(255),
-                    embedding vector({dim})
-                );
-                """
-            )
-            # Create index on appid for faster interaction lookups if needed (though we mainly search by vector)
-            cur.execute("CREATE INDEX IF NOT EXISTS game_embeddings_appid_idx ON gameEmbeddings (appid);")
+            
+            # Check if table exists and has correct dimension
+            cur.execute("""
+                SELECT COUNT(*) FROM information_schema.columns 
+                WHERE table_name = 'gameembeddings' AND column_name = 'embedding';
+            """)
+            table_exists = cur.fetchone()[0] > 0
+            
+            if table_exists:
+                # Check current dimension by looking at a sample or the type
+                cur.execute("""
+                    SELECT atttypmod FROM pg_attribute 
+                    WHERE attrelid = 'gameembeddings'::regclass 
+                    AND attname = 'embedding';
+                """)
+                result = cur.fetchone()
+                current_dim = result[0] if result and result[0] > 0 else 0
+                
+                if current_dim != dim and current_dim > 0:
+                    print(f"Dimension mismatch: table has {current_dim}, need {dim}. Dropping table...")
+                    cur.execute("DROP TABLE IF EXISTS gameEmbeddings;")
+                    table_exists = False
+            
+            if not table_exists:
+                # Create gameEmbeddings table with vector column of given dimension
+                cur.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS gameEmbeddings (
+                        id bigserial PRIMARY KEY,
+                        appid VARCHAR(255),
+                        embedding vector({dim})
+                    );
+                    """
+                )
+                # Create HNSW index for fast approximate nearest neighbor search
+                # vector_cosine_ops is required for <=> operator
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS game_embeddings_embedding_idx 
+                    ON gameEmbeddings USING hnsw (embedding vector_cosine_ops);
+                """)
+                # Standard btree index on appid for lookups
+                cur.execute("CREATE INDEX IF NOT EXISTS game_embeddings_appid_idx ON gameEmbeddings (appid);")
             
         conn.commit()
         print(f"GameEmbeddings table is available (dim={dim})")
@@ -70,9 +100,9 @@ def initialize_game_embeddings(db_url, dim=30):
 def initialize_game_embeddings_database():
     dim_env = os.environ.get('EMBEDDING_DIM')
     try:
-        dim = int(dim_env) if dim_env else 30
+        dim = int(dim_env) if dim_env else 128
     except Exception:
-        dim = 30
+        dim = 128
 
     db_url = build_database_url()
     if not wait_for_db(db_url):
@@ -84,9 +114,9 @@ def initialize_game_embeddings_database():
 def main():
     dim_env = os.environ.get('EMBEDDING_DIM')
     try:
-        dim = int(dim_env) if dim_env else 30
+        dim = int(dim_env) if dim_env else 128
     except Exception:
-        dim = 30
+        dim = 128
 
     db_url = build_database_url()
     if not wait_for_db(db_url):

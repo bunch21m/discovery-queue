@@ -109,6 +109,45 @@ def add_user_interaction_to_database(app_id, user_id, interaction_type):
 
     return False
 
+
+def delete_user_interaction_from_database(app_id, user_id):
+    """
+    Deletes a specific user interaction from the PostgreSQL database.
+    Used for evaluation purposes (e.g., Leave-One-Out validation).
+
+    Returns:
+            bool: True if the interaction was deleted successfully, False otherwise.
+    """
+    
+    user = read_secret('/run/secrets/postgres_user')
+    password = read_secret('/run/secrets/postgres_password')
+    db_name = read_secret('/run/secrets/postgres_db')
+    
+    if not (user and password and db_name):
+        raise RuntimeError("Database credentials not found")
+
+    db_url = f"postgresql://{user}:{password}@db:5432/{db_name}"
+
+    try:
+        import psycopg2
+
+        conn = psycopg2.connect(db_url)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM interactions 
+                WHERE appid = %s AND userid = %s;
+                """,
+                (app_id, user_id)
+            )
+            conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        raise RuntimeError(f"Database error during deletion: {e}")
+
+    return False
+
 def get_all_interactions_from_database():
     """
     Loads all interactions from the PostgreSQL database.

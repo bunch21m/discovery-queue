@@ -100,6 +100,7 @@ class TwoTowerRecommender:
             # We use the wrapper function which handles fetching and computing
             user_features_np = concat_user_features(username)
             
+            
             # Convert to tensor and batch dim
             user_features = torch.tensor(user_features_np, dtype=torch.float32).unsqueeze(0)
             
@@ -108,13 +109,16 @@ class TwoTowerRecommender:
                 user_embedding = self.model.user_tower(user_features)
                 user_embedding = torch.nn.functional.normalize(user_embedding, p=2, dim=1)
             
+
+            
             user_vec = user_embedding.numpy().flatten().tolist()
             
             # 2. ANN Retrieval from DB
             # Pool size to determine how many candidates to fetch
             
             print("Retrieving nearest neighbors...")
-            pool_size = 10000
+            # Reduced pool size from 20,000 to 10,000 to improve latency while keeping safe recall
+            pool_size = 10000 
             start_time = time.perf_counter()
             candidates = self._retrieve_nearest_neighbors(user_vec, pool_size, exclude_app_ids=seen_app_ids)
             print(f"Time it took to retrieve {len(candidates)} candidates: {time.perf_counter() - start_time:.2f} seconds")
@@ -142,15 +146,22 @@ class TwoTowerRecommender:
                     interactions_df = interactions_df.rename(columns={'appid': 'app_id'})
                 
                 # Get top K from two-tower as candidates for LambdaMART
-                candidate_app_ids = list(candidates.keys())[:1000]
+                candidate_app_ids = list(candidates.keys())[:5000]
                 
-                # Score with LambdaMART - get top 100 for MMR   
+                # Extract distances for personalization feature
+                candidate_distances = {
+                    aid: candidates[aid].get('distance', 1.0) 
+                    for aid in candidate_app_ids
+                }
+                
+                # Score with LambdaMART - get top 500 for MMR   
                 lambdamart_results = get_top_k_recommendations(
                     user_id=user_id,
                     interactions_df=interactions_df,
                     games_df=games_df,
                     candidate_app_ids=candidate_app_ids,
-                    k=100,
+                    candidate_distances=candidate_distances,  # NEW: pass distances
+                    k=500,
                     model_path=lambdamart_model_path
                 )
                 
@@ -176,14 +187,24 @@ class TwoTowerRecommender:
             
             # === MMR Diversity Reranking ===
             original_top10 = list(candidates.values())[:10]
-            print(f"Intralist diversity before MMR: {get_intralist_diversity(original_top10)}")
+            div_before = get_intralist_diversity(original_top10)
+            print(f"Intralist diversity before MMR: {div_before}")
             
-            # Rerank using MMR - only rerank top 100 to keep it fast
+            # Rerank using MMR - rerank top 500 to match LambdaMART output
             candidate_list = list(candidates.values())
-            mmr_pool = candidate_list[:100]
-            mmr_reranked = mmr_rerank(mmr_pool, lambda_param=0.3, num_recommendations=k)
+            mmr_pool = candidate_list[:500]
+            mmr_reranked = mmr_rerank(mmr_pool, lambda_param=0.5, num_recommendations=k)
+            
+            div_after = get_intralist_diversity(mmr_reranked[:10])
             print(f"Top 10 candidates after MMR: {[mmr_reranked[i]['app_id'] for i in range(min(10, len(mmr_reranked)))]}")
-            print(f"Intralist diversity after MMR: {get_intralist_diversity(mmr_reranked)}")
+            print(f"Intralist diversity after MMR: {div_after}")
+            
+            # Save metrics for analysis
+            self.latest_metrics = {
+                'diversity_before': div_before,
+                'diversity_after': div_after,
+                'diversity_improvement': div_after - div_before
+            }
                 
             # Hybrid Strategy: Top 5 Nearest + 5 Random from the rest
             # We assume k=10 usually. We'll split k roughly in half.
@@ -220,7 +241,10 @@ class TwoTowerRecommender:
         results = []
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # pgvector cosine distance operator is <=>
+                # HNSW ef_search MUST be >= k to retrieve k results
+                # pgvector caps ef_search at 1000
+                ef_search = min(max(k, 400), 1000)
+                cur.execute(f"SET hnsw.ef_search = {ef_search};")
                 
                 query_params = [str(vector)]
                 filter_clause = ""
@@ -265,27 +289,35 @@ class TwoTowerRecommender:
 
     def _fetch_game_details(self, app_ids_with_distances):
         """
-        Fetches game details in batch, preserving original order.
+        Fetches game details from IN-MEMORY CACHE (Lazy Hydration).
+        Avoids hitting the DB for 10k items.
         """
-        app_ids = []
-        distances = {}
+        from src.models.user_two_tower_embedding import get_cached_game_data
+        
+        # Ensure cache is loaded
+        games_df, _ = get_cached_game_data()
+        
+        games_data = {}
+        
+        # Batch lookup from DataFrame (Hash Map)
+        # much faster than SQL IN (...)
         for item in app_ids_with_distances:
             if isinstance(item, tuple):
                 aid, dist = item
             else:
                 aid, dist = item, None
-            app_ids.append(aid)
-            distances[aid] = dist
             
-        games_data_unordered = get_games_from_database(app_ids)
-        
-        # Build ordered dict preserving the original distance-sorted order
-        games_data = {}
-        for aid in app_ids:
-            if aid in games_data_unordered:
-                game = games_data_unordered[aid]
-                game['distance'] = distances.get(aid)
-                games_data[aid] = game
+            # Use string ID for lookup
+            aid_str = str(aid)
+            
+            if aid_str in games_df.index:
+                # Convert row to dict
+                # Note: This gives us 'genres', 'prices', etc.
+                # It suffices for LambdaMART and MMR.
+                game_dict = games_df.loc[aid_str].to_dict()
+                game_dict['app_id'] = aid_str # Ensure explicitly set
+                game_dict['distance'] = dist
+                games_data[aid_str] = game_dict
                 
         return games_data
 

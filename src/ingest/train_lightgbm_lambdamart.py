@@ -19,22 +19,46 @@ import uuid
 import os
 import pickle
 
-from src.models.lightgbm_lambdamart import compute_user_features, compute_game_features_for_lambdamart
+from src.models.lightgbm_lambdamart import compute_user_features, compute_game_features_for_lambdamart, compute_cross_features
 from src.ingest.create_game_embeddings import compute_game_features
 
 
 def get_weights(df):
     """
     Calculates sampling weights based on Rating Quality and Popularity Volume.
-    Formula: (Positive_Ratio) * (Log(Positive_Count)^1.5)
+    Formula: (Positive_Ratio) * (Log(Positive_Count)^0.75)
+    Reduced power for better genre/popularity balance.
     """
     pos = df['positive'].fillna(0)
     neg = df['negative'].fillna(0)
     
     ratio = pos / (pos + neg + 1.0)
-    volume_boost = np.log1p(pos) ** 1.5
+    volume_boost = np.log1p(pos) ** 0.75  # Reduced from ^1.5 for better genre signal
     
     return (ratio * volume_boost) + 0.1
+
+
+def compute_personalization_score(user_liked_genres, game_genres):
+    """
+    Compute personalization score (0-1) based on genre overlap.
+    This simulates what the two-tower distance captures.
+    
+    Higher score = better personalization match (like lower distance in two-tower).
+    """
+    if not user_liked_genres or not game_genres:
+        return 0.0
+    
+    # Jaccard-like similarity
+    user_set = set(g.lower() for g in user_liked_genres)
+    game_set = set(g.lower() for g in game_genres if isinstance(g, str))
+    
+    if not game_set:
+        return 0.0
+    
+    intersection = len(user_set & game_set)
+    union = len(user_set | game_set)
+    
+    return intersection / union if union > 0 else 0.0
 
 
 def compute_relevance_score(game_row, persona_name, persona_data, games_df):
@@ -111,25 +135,28 @@ def compute_relevance_score(game_row, persona_name, persona_data, games_df):
     
     else:
         # Mainstream personas (ActionFan, RPGPlayer, StrategySimFan, EclecticExplorer)
+        # GENRE is the PRIMARY signal, popularity is secondary
+        
         if has_disliked_genre:
-            return 0
+            return 0  # Hard reject disliked genres
         
         if has_liked_genre:
-            # Genre match - now check popularity
-            if positive >= min_positive * 10:  # Very popular
-                return 3
-            elif positive >= min_positive:
-                return 2
-            elif positive >= min_positive / 2:
-                return 1
-            else:
-                return 0  # Below popularity threshold
-        else:
-            # No genre match - check if at least popular
+            # Genre match is the main signal - start at relevance 2
+            base_relevance = 2
+            
+            # Small popularity bonus (max +1)
             if positive >= min_positive * 5:
-                return 1
+                return min(3, base_relevance + 1)  # Boost to 3 only if very popular
+            elif positive >= min_positive:
+                return base_relevance  # Already good at 2
             else:
-                return 0
+                return max(1, base_relevance - 1)  # Still relevant, just less popular
+        else:
+            # No genre match - only recommend if VERY popular
+            if positive >= min_positive * 10:
+                return 1  # Weak recommendation
+            else:
+                return 0  # Not relevant
 
 
 def generate_lambdamart_training_data():
@@ -149,9 +176,19 @@ def generate_lambdamart_training_data():
     with open('data/games.json', 'r', encoding='utf-8') as f:
         games_dict = json.load(f)
     
+    # Minimum review threshold - match Two-Tower training
+    MIN_REVIEWS_FOR_TRAINING = 10
+    
     # Convert to DataFrame
     processed_games = []
+    skipped_low_review = 0
     for app_id, data in games_dict.items():
+        # Filter out games with insufficient reviews
+        positive_reviews = int(data.get('positive', 0))
+        if positive_reviews < MIN_REVIEWS_FOR_TRAINING:
+            skipped_low_review += 1
+            continue
+            
         price = data.get('price', 0)
         if isinstance(price, str):
             try:
@@ -176,21 +213,21 @@ def generate_lambdamart_training_data():
     games_df.set_index('app_id', inplace=True)
     games_df['app_id'] = games_df.index
     
-    print(f"Loaded {len(games_df)} games.")
+    print(f"Loaded {len(games_df)} games (skipped {skipped_low_review} with < {MIN_REVIEWS_FOR_TRAINING} reviews).")
     
-    # Pre-compute all game features once for consistent SVD encoding
+    # Pre-compute all game features once for consistent encoding
     print("Pre-computing game features...")
-    # Use prepare_genre_processors to get consistent MLB/SVD
+    # Use prepare_genre_processors to get consistent MLB
     from src.models.user_two_tower_embedding import prepare_genre_processors
-    mlb, svd, _ = prepare_genre_processors(games_df)
+    mlb, _ = prepare_genre_processors(games_df)
     
     # Save processors for inference consistency
     os.makedirs('data', exist_ok=True)
     with open('data/lambdamart_processors.pkl', 'wb') as f:
-        pickle.dump({'mlb': mlb, 'svd': svd}, f)
+        pickle.dump({'mlb': mlb}, f)
     print("Saved processors to data/lambdamart_processors.pkl")
     
-    precomputed_game_features = compute_game_features(games_df, mlb=mlb, svd=svd)
+    precomputed_game_features = compute_game_features(games_df, mlb=mlb)
     app_id_to_idx = {aid: i for i, aid in enumerate(games_df.index)}
     
     # Personas - same as two-tower training
@@ -284,6 +321,23 @@ def generate_lambdamart_training_data():
                     sampled_disliked = disliked_games.sample(n=n_disliked, weights=get_weights(disliked_games))
                     candidates.extend(sampled_disliked.index.tolist())
             
+            # ~10% HARD NEGATIVES: Liked genres but LOW popularity
+            # These teach the reranker: "genre match alone isn't enough"
+            min_positive = persona_data.get('min_positive', 100)
+            if liked_genres and min_positive > 0:
+                hard_neg_mask = games_df['genres'].apply(
+                    lambda g: any(l in g for l in liked_genres) if isinstance(g, list) else False
+                )
+                # Filter for games BELOW the persona's popularity threshold
+                hard_neg_pool = games_df[hard_neg_mask & (games_df['positive'] < min_positive)]
+                hard_neg_pool = hard_neg_pool[~hard_neg_pool.index.isin(candidates)]
+                
+                if len(hard_neg_pool) > 0:
+                    n_hard_neg = min(len(hard_neg_pool), int(n_candidates_per_query * 0.1))
+                    # Sample uniformly (not weight-biased) to ensure tiny games appear
+                    sampled_hard_neg = hard_neg_pool.sample(n=n_hard_neg)
+                    candidates.extend(sampled_hard_neg.index.tolist())
+            
             # Fill rest with random games
             remaining = n_candidates_per_query - len(candidates)
             if remaining > 0:
@@ -323,8 +377,8 @@ def generate_lambdamart_training_data():
             
             interactions_df = pd.DataFrame(interactions) if interactions else pd.DataFrame()
             
-            # Compute user features (passing mlb/svd for consistency)
-            user_features = compute_user_features(user_id, interactions_df, games_df, mlb=mlb, svd=svd)
+            # Compute user features (passing mlb for consistency)
+            user_features = compute_user_features(user_id, interactions_df, games_df, mlb=mlb)
             
             # Score each candidate
             query_X = []
@@ -341,11 +395,26 @@ def generate_lambdamart_training_data():
                 
                 # Compute game features (use precomputed for consistency)
                 game_features = compute_game_features_for_lambdamart(
-                    game_row, games_df, precomputed_game_features, app_id_to_idx, mlb=mlb, svd=svd
+                    game_row, games_df, precomputed_game_features, app_id_to_idx, mlb=mlb
                 )
                 
-                # Concatenate user + game features
-                combined_features = np.concatenate([user_features, game_features])
+                # Compute personalization score (simulates two-tower distance)
+                game_genres = game_row.get('genres', [])
+                personalization = compute_personalization_score(liked_genres, game_genres)
+                
+                # Compute Cross Features
+                # Reshape for function input (1, D)
+                uf_2d = user_features.reshape(1, -1)
+                gf_2d = game_features.reshape(1, -1)
+                cross_feats = compute_cross_features(uf_2d, gf_2d).flatten()
+                
+                # Concatenate user + game + personalization + cross features
+                combined_features = np.concatenate([
+                    user_features, 
+                    game_features, 
+                    np.array([personalization]),
+                    cross_feats
+                ])
                 
                 query_X.append(combined_features)
                 query_y.append(relevance)

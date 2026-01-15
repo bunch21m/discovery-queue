@@ -71,9 +71,10 @@ def calculate_genre_similarity(genres1, genres2):
 
 
 # Implements a simple MMR (Maximal Marginal Relevance) reranking algorithm
-def mmr_rerank(recommendations, lambda_param=0.3, num_recommendations=10):
+def mmr_rerank(recommendations, lambda_param=0.7, num_recommendations=10):
     """
     Reranks the given recommendations using the MMR algorithm.
+    OPTIMIZED: Batch fetch embeddings, compute similarities in NumPy.
     """
     if not recommendations:
         return []
@@ -84,10 +85,9 @@ def mmr_rerank(recommendations, lambda_param=0.3, num_recommendations=10):
         if 'lambdamart_score' in r:
             raw_relevances.append(r['lambdamart_score'])
         else:
-            # Fallback to (1 - distance) if no LambdaMART score
             raw_relevances.append(1 - r.get('distance', 1.0))
     
-    # 2. Normalize relevance scores to [0, 1] for balanced MMR
+    # 2. Normalize relevance scores to [0, 1]
     min_rel = min(raw_relevances)
     max_rel = max(raw_relevances)
     rel_range = max_rel - min_rel if max_rel > min_rel else 1.0
@@ -95,48 +95,98 @@ def mmr_rerank(recommendations, lambda_param=0.3, num_recommendations=10):
     for i, r in enumerate(recommendations):
         r['_mmr_relevance'] = (raw_relevances[i] - min_rel) / rel_range
 
-    selected = [recommendations[0]]  # Start with the most relevant
-    remaining = recommendations[1:]
+    # 3. OPTIMIZATION: Batch fetch all embeddings upfront
+    app_ids = [r['app_id'] for r in recommendations]
+    embeddings = _batch_fetch_embeddings(app_ids)
     
-    db_url = build_database_url()
-    conn = psycopg2.connect(db_url)
+    # Build embedding lookup and genre lookup
+    emb_lookup = {aid: emb for aid, emb in embeddings}
+    genre_lookup = {r['app_id']: r.get('genres', []) for r in recommendations}
     
-    try:
-        with conn.cursor() as cur:
-            while len(selected) < num_recommendations and remaining:
-                mmr_scores = {}
+    # 4. MMR Selection (all in Python, no more DB calls)
+    import numpy as np
+    
+    selected = [recommendations[0]]
+    remaining = list(recommendations[1:])
+    
+    while len(selected) < num_recommendations and remaining:
+        best_score = float('-inf')
+        best_candidate = None
+        
+        for candidate in remaining:
+            relevance = candidate['_mmr_relevance']
+            
+            # Compute max similarity to selected items (in memory)
+            max_sim = 0.0
+            cand_emb = emb_lookup.get(candidate['app_id'])
+            cand_genres = genre_lookup.get(candidate['app_id'], [])
+            
+            for s in selected:
+                sel_emb = emb_lookup.get(s['app_id'])
+                sel_genres = genre_lookup.get(s['app_id'], [])
                 
-                for candidate in remaining:
-                    relevance = candidate['_mmr_relevance']
-                    
-                    # Compute max similarity to selected items
-                    # COMBINE: 1. Embedding Similarity + 2. Explicit Genre Overlap
-                    similarities = []
-                    for s in selected:
-                        # a. Embedding-based similarity
-                        emb_sim = 1 - get_cosine_distance(cur, candidate['app_id'], s['app_id'])
-                        
-                        # b. Explicit Genre Overlap (Jaccard)
-                        genre_sim = calculate_genre_similarity(candidate.get('genres', []), s.get('genres', []))
-                        
-                        # Weight both - genre similarity is much more "interpretable" for the user
-                        combined_sim = 0.5 * emb_sim + 0.5 * genre_sim
-                        similarities.append(combined_sim)
-                    
-                    max_sim = max(similarities)
-                    
-                    # MMR score
-                    mmr_score = lambda_param * relevance - (1 - lambda_param) * max_sim
-                    mmr_scores[candidate['app_id']] = (mmr_score, candidate)
-                    
-                # Select the candidate with highest MMR score
-                next_best_id = max(mmr_scores, key=lambda x: mmr_scores[x][0])
-                next_best = mmr_scores[next_best_id][1]
-                selected.append(next_best)
-                remaining.remove(next_best)
-    finally:
-        conn.close()
+                # Embedding similarity (cosine)
+                if cand_emb is not None and sel_emb is not None:
+                    # Cosine similarity = 1 - cosine distance
+                    dot = np.dot(cand_emb, sel_emb)
+                    norm = np.linalg.norm(cand_emb) * np.linalg.norm(sel_emb)
+                    emb_sim = dot / norm if norm > 0 else 0.0
+                else:
+                    emb_sim = 0.0
+                
+                # Genre similarity (Jaccard)
+                genre_sim = calculate_genre_similarity(cand_genres, sel_genres)
+                
+                combined_sim = 0.5 * emb_sim + 0.5 * genre_sim
+                max_sim = max(max_sim, combined_sim)
+            
+            # MMR score
+            mmr_score = lambda_param * relevance - (1 - lambda_param) * max_sim
+            
+            if mmr_score > best_score:
+                best_score = mmr_score
+                best_candidate = candidate
+        
+        if best_candidate:
+            selected.append(best_candidate)
+            remaining.remove(best_candidate)
     
     return selected
 
+
+def _batch_fetch_embeddings(app_ids):
+    """Batch fetch embeddings for multiple app IDs in a single query."""
+    if not app_ids:
+        return []
     
+    db_url = build_database_url()
+    conn = psycopg2.connect(db_url)
+    embeddings = []
+    
+    try:
+        with conn.cursor() as cur:
+            placeholders = ','.join(['%s'] * len(app_ids))
+            query = f"""
+            SELECT appid, embedding
+            FROM gameEmbeddings
+            WHERE appid IN ({placeholders});
+            """
+            cur.execute(query, tuple(str(aid) for aid in app_ids))
+            rows = cur.fetchall()
+            
+            import numpy as np
+            for row in rows:
+                app_id = row[0]
+                # Parse the vector string to numpy array
+                emb_str = row[1]
+                if isinstance(emb_str, str):
+                    # Format: [0.1,0.2,...]
+                    emb_str = emb_str.strip('[]')
+                    emb = np.array([float(x) for x in emb_str.split(',')])
+                else:
+                    emb = np.array(emb_str)
+                embeddings.append((app_id, emb))
+    finally:
+        conn.close()
+    
+    return embeddings

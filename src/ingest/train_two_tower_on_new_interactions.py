@@ -2,17 +2,19 @@ import os
 import sys
 import json
 import pickle
+import random
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from datetime import datetime, timedelta
 import psycopg2
 from psycopg2.extras import execute_values
 
-from src.models.train_two_tower_model import TwoTowerModel, TwoTowerDataset
+from src.models.train_two_tower_model import TwoTowerModel, TripletLoss
 from src.models.user_two_tower_embedding import compute_user_embedding, prepare_genre_processors
 from src.ingest.create_game_embeddings import compute_game_features
 from src.ingest.initialize_game_embeddings import build_database_url
@@ -23,6 +25,10 @@ from src.db.interaction_functions import (
 )
 from src.db.tools.game_functions import load_all_games_from_database
 from src.ingest.store_game_embeddings import generate_and_store_all_game_embeddings
+
+# Match initial training parameters
+TRIPLET_MARGIN = 0.33
+
 
 def get_last_training_timestamp():
     """Get the timestamp of the last training run."""
@@ -63,8 +69,11 @@ def load_existing_model():
     print(f"Loaded existing model with dimensions - User: {saved_user_dim}, Game: {saved_game_dim}")
     return model, saved_user_dim, saved_game_dim
 
-def generate_pairs_from_new_interactions(last_timestamp):
-    """Generate training pairs from new interactions since last training."""
+def generate_triplets_from_new_interactions(last_timestamp):
+    """
+    Generate training TRIPLETS from new interactions since last training.
+    Uses same triplet structure as initial training for consistency.
+    """
 
     print(f"Fetching interactions after {last_timestamp}...")
 
@@ -85,7 +94,7 @@ def generate_pairs_from_new_interactions(last_timestamp):
             user_interactions[user_id] = []
         user_interactions[user_id].append(interaction)
 
-    # Load games data from database (since all games are already there)
+    # Load games data from database
     print("Loading games data...")
     raw_data = load_all_games_from_database()
     games_df = pd.DataFrame.from_dict(raw_data, orient='index')
@@ -95,57 +104,80 @@ def generate_pairs_from_new_interactions(last_timestamp):
     print("Computing game features...")
     game_vectors_matrix = compute_game_features(games_df)
     game_vectors = {aid: vec for aid, vec in zip(games_df.index, game_vectors_matrix)}
+    
+    # Get list of valid game IDs for negative sampling
+    valid_game_ids = list(game_vectors.keys())
 
     # PRE-COMPUTE GENRE PROCESSORS FOR SPEED
     print("Pre-computing genre matrices...")
-    mlb, svd, genre_matrix_multi_hot = prepare_genre_processors(games_df)
+    mlb, genre_matrix_multi_hot = prepare_genre_processors(games_df)
     
-    pairs = []
+    triplets = []
 
-    # Fetch ALL interactions for ALL relevant users in one go to avoid N queries
+    # Fetch ALL interactions for ALL relevant users in one go
     user_id_list = list(user_interactions.keys())
     all_users_all_interactions = get_interactions_for_users_from_database(user_id_list)
 
-    # Generate pairs for each user with new interactions
-    for user_id, new_interactions in user_interactions.items():
-        # Get ALL interactions for this user from the pre-fetched dict
+    # Generate triplets for each user with new interactions
+    for user_id, new_user_interactions in user_interactions.items():
+        # Get ALL interactions for this user
         all_interactions = all_users_all_interactions.get(user_id, {})
         all_interactions_df = pd.DataFrame.from_dict(all_interactions, orient='index')
 
         # Compute user embedding using ALL of this user's interactions
-        # This ensures the multihot genre encoding reflects all wishlisted genres across user's history
         try:
             user_vec = compute_user_embedding(
                 user_id,
                 all_interactions_df,
                 games_df,
                 mlb=mlb,
-                svd=svd,
                 genre_matrix_multi_hot=genre_matrix_multi_hot
             )
 
-            # Create positive and negative pairs from new interactions
-            for interaction in new_interactions:
-                app_id = str(interaction['appid'])
-                if app_id in game_vectors:
-                    label = 1 if interaction['interactiontype'] == 'wishlist' else 0
-                    pairs.append({
-                        "user_vector": user_vec.tolist(),
-                        "game_vector": game_vectors[app_id].tolist(),
-                        "label": label
-                    })
+            # Separate positive (wishlist) interactions
+            positives = [i for i in new_user_interactions if i['interactiontype'] == 'wishlist']
+            
+            if not positives:
+                continue  # Skip users with no wishlists in new interactions
+                
+            # Get set of all interacted games for this user
+            interacted_ids = set(str(i['appid']) for i in all_interactions.values()) if all_interactions else set()
+
+            # Create triplets: (user, positive_game, negative_game)
+            for pos_interaction in positives:
+                pos_id = str(pos_interaction['appid'])
+                if pos_id not in game_vectors:
+                    continue
+                    
+                pos_vec = game_vectors[pos_id]
+                
+                # Sample random negatives (matching initial training strategy)
+                num_negatives = 5  # Match initial training
+                attempts = 0
+                neg_count = 0
+                
+                while neg_count < num_negatives and attempts < 60:
+                    rand_id = random.choice(valid_game_ids)
+                    if rand_id not in interacted_ids and rand_id in game_vectors:
+                        triplets.append({
+                            "user_vector": user_vec.tolist(),
+                            "pos_vector": pos_vec.tolist(),
+                            "neg_vector": game_vectors[rand_id].tolist()
+                        })
+                        neg_count += 1
+                    attempts += 1
 
         except Exception as e:
             print(f"Error processing user {user_id}: {e}")
             continue
 
-    print(f"Generated {len(pairs)} training pairs from new interactions.")
-    return pairs
+    print(f"Generated {len(triplets)} training triplets from new interactions.")
+    return triplets
 
 
 
 def train_on_new_interactions():
-    """Main function to train the model on new interactions."""
+    """Main function to train the model on new interactions using TripletLoss."""
 
     print("Starting incremental training on new interactions...")
 
@@ -158,46 +190,95 @@ def train_on_new_interactions():
     if model is None:
         return
 
-    # Generate pairs from new interactions
-    pairs = generate_pairs_from_new_interactions(last_timestamp)
+    # Generate triplets from new interactions
+    triplets = generate_triplets_from_new_interactions(last_timestamp)
 
-    if not pairs:
+    if not triplets:
         print("No new training data available.")
         return
 
    
-   # Split Train/Val
-    np.random.shuffle(pairs)
-    split_idx = int(0.8 * len(pairs))
-    train_pairs = pairs[:split_idx]
-    val_pairs = pairs[split_idx:]
+    # Split Train/Val
+    random.shuffle(triplets)
+    split_idx = int(0.8 * len(triplets))
+    
+    # Vectorize data
+    print("Vectorizing data...")
+    user_vectors = np.array([t['user_vector'] for t in triplets], dtype=np.float32)
+    pos_vectors = np.array([t['pos_vector'] for t in triplets], dtype=np.float32)
+    neg_vectors = np.array([t['neg_vector'] for t in triplets], dtype=np.float32)
 
-    train_dataset = TwoTowerDataset(train_pairs)
-    val_dataset = TwoTowerDataset(val_pairs)
+    # Convert to Tensors
+    all_user_tensor = torch.tensor(user_vectors)
+    all_pos_tensor = torch.tensor(pos_vectors)
+    all_neg_tensor = torch.tensor(neg_vectors)
+
+    train_indices = list(range(split_idx))
+    val_indices = list(range(split_idx, len(triplets)))
+
+    train_dataset = torch.utils.data.TensorDataset(
+        all_user_tensor[train_indices], 
+        all_pos_tensor[train_indices], 
+        all_neg_tensor[train_indices]
+    )
+    val_dataset = torch.utils.data.TensorDataset(
+        all_user_tensor[val_indices], 
+        all_pos_tensor[val_indices], 
+        all_neg_tensor[val_indices]
+    )
 
     # Check for empty datasets
-    if len(train_pairs) == 0:
+    if len(train_dataset) == 0:
         print("Not enough data to train.")
         return
 
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+    # Check for GPU
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
 
-    criterion = nn.BCEWithLogitsLoss()
+    # Match initial training batch size
+    BATCH_SIZE = 512
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, drop_last=True)
+
+    if len(train_loader) == 0:
+        print("Not enough data for a full batch. Skipping training.")
+        return
+
+    model.to(device)
+
+    # Use TripletLoss matching initial training
+    criterion = TripletLoss(margin=TRIPLET_MARGIN)
     # Lower learning rate for incremental training to avoid catastrophic forgetting
-    optimizer = optim.Adam(model.parameters(), lr=0.00001) 
+    optimizer = optim.Adam(model.parameters(), lr=0.00005, weight_decay=1e-4)
+    
+    # Learning rate scheduler
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=3
+    )
 
-    epochs = 50
+    epochs = 20  # Fewer epochs for incremental training
     best_val_loss = float('inf')
+    patience_counter = 0
+    max_patience = 5
 
-    print("Starting training...")
+    print(f"Starting triplet training (margin={TRIPLET_MARGIN})...")
     for epoch in range(epochs):
         model.train()
         train_loss = 0.0
-        for user_feat, game_feat, labels in train_loader:
+        
+        for user_feat, pos_game, neg_game in train_loader:
+            user_feat = user_feat.to(device)
+            pos_game = pos_game.to(device)
+            neg_game = neg_game.to(device)
+
             optimizer.zero_grad()
-            outputs = model(user_feat, game_feat)
-            loss = criterion(outputs, labels)
+            
+            # Get embeddings
+            user_emb, pos_emb = model(user_feat, pos_game)
+            _, neg_emb = model(user_feat, neg_game)
+            
+            loss = criterion(user_emb, pos_emb, neg_emb)
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -208,24 +289,41 @@ def train_on_new_interactions():
         correct = 0
         total = 0
         with torch.no_grad():
-            for user_feat, game_feat, labels in val_loader:
-                outputs = model(user_feat, game_feat)
-                loss = criterion(outputs, labels)
+            for user_feat, pos_game, neg_game in val_loader:
+                user_feat = user_feat.to(device)
+                pos_game = pos_game.to(device)
+                neg_game = neg_game.to(device)
+
+                user_emb, pos_emb = model(user_feat, pos_game)
+                _, neg_emb = model(user_feat, neg_game)
+                
+                loss = criterion(user_emb, pos_emb, neg_emb)
                 val_loss += loss.item()
                 
-                predicted = (torch.sigmoid(outputs) > 0.5).float()
-                correct += (predicted == labels).sum().item()
-                total += labels.size(0)
+                # Accuracy: positive similarity > negative similarity
+                pos_sim = (user_emb * pos_emb).sum(dim=1)
+                neg_sim = (user_emb * neg_emb).sum(dim=1)
+                correct += (pos_sim > neg_sim).sum().item()
+                total += user_feat.size(0)
 
         avg_train_loss = train_loss / len(train_loader)
-        avg_val_loss = val_loss / len(val_loader)
-        accuracy = correct / total
+        avg_val_loss = val_loss / len(val_loader) if len(val_loader) > 0 else 0
+        accuracy = correct / total if total > 0 else 0
 
-        print(f"Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val Acc: {accuracy:.4f}")
+        print(f"Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val Acc: {accuracy:.4f} | LR: {optimizer.param_groups[0]['lr']:.6f}")
+
+        # Step the learning rate scheduler
+        scheduler.step(avg_val_loss)
 
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
+            patience_counter = 0
             torch.save(model.state_dict(), 'data/two_tower_model.pth')
+        else:
+            patience_counter += 1
+            if patience_counter >= max_patience:
+                print(f"Early stopping at epoch {epoch+1}")
+                break
 
     print("Training complete. Model saved to data/two_tower_model.pth")
     
