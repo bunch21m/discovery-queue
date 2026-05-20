@@ -4,7 +4,11 @@
 
 This personal project was built to explore the complexities of modern recommendation systems. Through researching industry standards, I implemented a two-stage architecture: a Two-Tower model for deep candidate generation and a Learning-to-Rank (LTR) model for downstream reranking, supported by vector search.
 
-*Note on Development: Generative AI was used throughout this project as a pair-programmer and tutor. It was instrumental in helping me research architectural concepts, optimize code, and understand concepts such as the practical trade-offs between relevance and diversity in recommendation systems. My focus was on deeply understanding the generated implementations to maximize my learning experience.*
+*Note on Development: 
+
+Generative AI was used throughout this project as a pair-programmer and tutor. It was instrumental in helping me research architectural concepts, optimize code, and understand concepts such as the practical trade-offs between relevance and diversity in recommendation systems. My focus was on deeply understanding the generated implementations to maximize my learning experience.
+
+Assistance from my friend [@DirusLupito](https://github.com/DirusLupito) was also utilized, in the form of helping with the frontend, an automated wishlist/skipping tool, and in exploring simple alternative recommendation methods.*
 
 ## Key Architectural Components
 
@@ -12,19 +16,23 @@ This personal project was built to explore the complexities of modern recommenda
 
 - **Two-Tower Neural Network**: A PyTorch-based model responsible for large-scale candidate generation. It produces dense embeddings for both users and game items, allowing for rapid candidate retrieval.
 - **Vector Database**: Utilizes `PostgreSQL` with the `pgvector` extension for efficient Approximate Nearest Neighbor (ANN) search over a catalog of 42,000+ items.
-- **Advanced Reranking Pipeline**: Implements a Learning-to-Rank (LTR) stage using `LightGBM LambdaMART`, paired with a Maximal Marginal Relevance (MMR) policy framework. This balances the raw relevance of recommendations with catalog diversity.
+- **Advanced Reranking Pipeline**: Implements a Learning-to-Rank (LTR) stage using `LightGBM LambdaMART`, paired with a Maximal Marginal Relevance (MMR) policy framework. The MMR algorithm utilizes a custom 50/50 penalty blend of Embedding Cosine Similarity and Genre Jaccard Similarity to mathematically enforce catalog diversity without destroying raw relevance.
 - **Automated ML Pipeline**: Fully containerized via Docker Compose. A single command handles database initialization, embedding generation, synthetic training pair generation, model training, and metrics evaluation, before serving the frontend.
 
-## Performance Metrics
+## Preliminary Performance Metrics
 
-The system's performance was evaluated by simulating various multi-faceted user personas (e.g., *ActionFanatic*, *StrategyPro*).
+To establish a baseline understanding of the pipeline's effectiveness, the system's performance was evaluated by simulating various multi-faceted user personas (e.g., *ActionFanatic*, *StrategyPro*) to generate synthetic interactions. 
+
+*Note on Evaluation: Because common offline testing in recommender systems works by hiding a small number of games a user liked and seeing if the model can recommend them, it unfairly penalizes the model when it recommends great substitute games that just weren't in that hidden list. In the videogame market there are many similar games, leading me to take a different approach to evaluation. My evaluation focuses on categorical alignment (Genre Precision) and overall session success rates.*
+
+While these represent small-scale offline metrics, they provide positive initial signals for the architecture:
 
 - **Candidate Generation (Two-Tower)**:
-  - Effectively narrows down the candidate pool, consistently retrieving target items ranked within the **Top 7.2%** of the 42,000+ catalog.
-- **Final Slate Generation (LambdaMART + MMR)**:
-  - **Overall Session Hit Rate**: 66.7% (binary success rate for sessions).
-  - **Diversity Improvement**: Achieved a **+548.9% MMR Diversity Gain**.
-  - Retained strong Precision@10 metrics (as high as 86.7% for specific personas) while significantly diversifying the final recommendations presented to the user.
+  - Demonstrated the ability to narrow down the candidate pool, retrieving target items ranked within the **Top 7.2%** of the 42,000+ catalog on average.
+  - **Overall Candidate Hit Rate**: 66.7% (Evaluated using a temporal leave-5-out validation. The query generated successfully retrieved at least 1 of the 5 hidden 'future' games within the top 250 candidates in two-thirds of sessions).
+- **Final Recommendation Generation (LambdaMART + MMR)**:
+  - **Diversity Improvement**: Showed a **+548.9% MMR Diversity Gain**, indicating that the MMR policy successfully mitigates filter bubbles.
+  - Showed strong **Genre Precision@10** metrics during evaluation (averaging 66.7% across all personas, peaking at 86.7%), suggesting the model successfully captures core interests while MMR diversifies the final slate.
 
 ## Technology Stack
 
@@ -51,7 +59,7 @@ docker compose up --build
 ```
 in the `discovery-queue` folder.
 
-The startup sequence automatically handles the entire pipeline: Database Setup -> Embedding Indexing -> Two-Tower Model Training -> LTR Reranker Training -> Evaluation Metrics Generation -> Web Server Initialization.
+The startup sequence automatically handles the entire pipeline: Database Setup -> Embedding Initialization -> Training Pair Generation -> Two-Tower Model Training -> Embedding Indexing -> LTR Reranker Training -> Evaluation Metrics Generation -> Web Server Initialization.
 
 **Important Note**: Because the initial startup includes full data ingestion, embedding indexing, and training multiple machine learning models from scratch, the first run can take a significant amount of time. Please be patient and allow the Docker container to complete the automated ML pipeline.
 
