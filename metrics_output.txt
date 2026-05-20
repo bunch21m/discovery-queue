@@ -1,0 +1,54 @@
+================================================================================
+FINAL SYSTEM REPORT (Metrics - 3 Trials Avg)
+================================================================================
+
+NOTE: 'Hit Rate@250' is Recall (Items Found / 5). 'Binary Hit' is Session Success Rate (At least 1 item found).
+
+--- PER-PERSONA BREAKDOWN (Mean ± Std Dev) ---
+
+PERSONA: StrategyPro
+  Retrieval (Recall@250): 26.7% ±23.1% | Binary Hit Rate: 66.7%
+  Ranking (NDCG@10):      0.0000 ±0.0000       | Recall@10:       0.0%
+  Precision@10:           63.3% ±20.8%   | Diversity:       0.389 ±0.088
+  Avg Rec Rank: 98.5 | Peak Rec Rank: 42
+  MMR Gain:     +200.4%
+
+PERSONA: CozyExplorer
+  Retrieval (Recall@250): 13.3% ±11.5% | Binary Hit Rate: 66.7%
+  Ranking (NDCG@10):      0.0000 ±0.0000       | Recall@10:       0.0%
+  Precision@10:           33.3% ±5.8%   | Diversity:       0.364 ±0.015
+  Avg Rec Rank: 125.0 | Peak Rec Rank: 93
+  MMR Gain:     +1067.5%
+
+PERSONA: ActionFanatic
+  Retrieval (Recall@250): 26.7% ±11.5% | Binary Hit Rate: 100.0%
+  Ranking (NDCG@10):      0.0327 ±0.0566       | Recall@10:       6.7%
+  Precision@10:           86.7% ±5.8%   | Diversity:       0.096 ±0.065
+  Avg Rec Rank: 46.3 | Peak Rec Rank: 10
+  MMR Gain:     +760.4%
+
+PERSONA: RPGFanatic
+  Retrieval (Recall@250): 6.7% ±11.5% | Binary Hit Rate: 33.3%
+  Ranking (NDCG@10):      0.0000 ±0.0000       | Recall@10:       0.0%
+  Precision@10:           83.3% ±11.5%   | Diversity:       0.113 ±0.029
+  Avg Rec Rank: 165.0 | Peak Rec Rank: 165
+  MMR Gain:     +167.1%
+
+--------------------------------------------------------------------------------
+AGGREGATE SYSTEM AVERAGES
+--------------------------------------------------------------------------------
+
+1. TWO-TOWER NEURAL NETWORK (Candidate Generation)
+   Avg Rank (Catalog):    3088 (Top 7.2% of 42k items)
+   Avg Peak Rank (Mean):  316 (Avg of best retrieved items)
+   Best Peak Rank (Abs):  96.0 (Best performance observed)
+
+2. FINAL SYSTEM (MMR Reranking + Policy)
+   Avg Recall@250:        18.3% (Items retained)
+   Avg Binary Hit Rate:   66.7% (Sessions with success)
+   Avg NDCG@10:           0.0082
+   Genre Precision@10:    66.7%
+   Intra-List Diversity:  0.241
+   MMR Diversity Gain:    +548.9%
+
+================================================================================
