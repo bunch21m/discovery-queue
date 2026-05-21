@@ -11,12 +11,17 @@
     <h1>Discovery Queue Recommender</h1>
     <p>Click the button below to get game recommendations.</p>
     <button id="recommendButton">Get Recommendations</button>
-    <button id="trainModelButton">Train Model on New Interactions</button>
-    <div id="trainingStatus"></div>
     <div id="recommendations"></div>
 
     <div id="autoWishlistTool">
-        <h2>Auto Wishlist Tool</h2>
+        <h2>Developer Tools</h2>
+
+        <h3>Retrain Model</h3>
+        <p>Incrementally train the recommendation model on new interactions since the last training run.</p>
+        <button id="trainModelButton">Train Model on New Interactions</button>
+        <div id="trainingStatus"></div>
+
+        <h3>Auto Wishlist Tool</h3>
         <p>Configure scoring rules and automate wishlist or skip actions based on the calculated score.</p>
 
         <div class="automation-controls">
