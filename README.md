@@ -10,10 +10,11 @@ This personal project was built to explore the complexities of modern recommenda
 
 ![Prediction Pipeline Architecture](docs/design/DQ%20Prediction%20Pipeline.drawio.png)
 
-- **Two-Tower Neural Network**: A PyTorch-based model responsible for large-scale candidate generation. It produces dense embeddings for both users and game items, allowing for rapid candidate retrieval.
-- **Vector Database**: Utilizes `PostgreSQL` with the `pgvector` extension for efficient Approximate Nearest Neighbor (ANN) search over a catalog of 42,000+ items.
-- **Advanced Reranking Pipeline**: Implements a Learning-to-Rank (LTR) stage using `LightGBM LambdaMART`, paired with a Maximal Marginal Relevance (MMR) policy framework. The MMR algorithm utilizes a custom 50/50 penalty blend of Embedding Cosine Similarity and Genre Jaccard Similarity to mathematically enforce catalog diversity without destroying raw relevance.
-- **Automated ML Pipeline**: Fully containerized via Docker Compose. A single command handles database initialization, embedding generation, synthetic training pair generation, model training, before serving the frontend.
+- **Candidate Generation (Two-Tower NN)**: A PyTorch-based model responsible for large-scale candidate retrieval. It produces dense embeddings for both users and game items, narrowing the 42,000+ game catalog down to ~5,000 candidates.
+- **Indexed Game Embeddings**: Utilizes a `PostgreSQL` vector database with the `pgvector` extension for efficient Approximate Nearest Neighbor (ANN) search to feed the candidate generation stage.
+- **Scoring (LambdaMART)**: A Learning-to-Rank (LTR) stage using `LightGBM LambdaMART` and a Game Feature Store to score and filter the ~5,000 candidates down to a highly relevant top 500.
+- **Re-ranking (MMR)**: A Maximal Marginal Relevance (MMR) policy framework that processes the scored candidates. It utilizes a custom 50/50 penalty blend of Embedding Cosine Similarity and Genre Jaccard Similarity to mathematically enforce catalog diversity for the final 10 recommendations without destroying raw relevance.
+- **Automated ML Pipeline**: Fully containerized via Docker Compose. A single command handles database initialization, embedding generation, synthetic training pair generation, model training, and then serves the frontend.
 
 ## Preliminary Performance Metrics
 
