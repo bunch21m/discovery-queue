@@ -4,7 +4,7 @@
 
 **Discovery Queue** is an end-to-end Machine Learning Recommender System designed to provide personalized video game recommendations. Users are presented with a set of games, interact with them to indicate preference, and receive continuously updated recommendations.
 
-This personal project was built to explore the complexities of modern recommendation systems. Through researching industry standards, I implemented a two-stage architecture: a Two-Tower model for deep candidate generation and a Learning-to-Rank (LTR) model for downstream reranking. Built as a learning project with GenAI-assisted development and some help from my friend [@DirusLupito](https://github.com/DirusLupito). See [Development Notes](#development-notes) below.
+This personal project was built to explore the complexities of modern recommendation systems. Through researching industry standards, I implemented a two-stage architecture: a Two-Tower model for deep candidate generation and a Learning-to-Rank (LTR) model for downstream reranking. Built as a learning project with GenAI-assisted development and some help from my friend [@DirusLupito](https://github.com/DirusLupito) (see Development Notes at the bottom for details).
 
 ## Key Architectural Components
 
